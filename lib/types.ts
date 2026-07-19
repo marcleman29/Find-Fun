@@ -20,4 +20,5 @@ export interface Place {
 
 export interface RankedPlace extends Place {
   qualityScore: number;
+  aiHighlight?: string;
 }

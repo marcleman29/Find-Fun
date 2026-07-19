@@ -34,11 +34,17 @@ export function PlaceCard({ place, isFavorite, onToggleFavorite }: PlaceCardProp
             ★ {place.rating.toFixed(1)} ({place.reviewCount.toLocaleString()})
           </Text>
           <View style={styles.scoreBadge}>
-            <Text style={styles.scoreBadgeText}>Quality score {place.qualityScore}</Text>
+            <Text style={styles.scoreBadgeText}>
+              {place.aiHighlight !== undefined ? 'AI score' : 'Quality score'} {place.qualityScore}
+            </Text>
           </View>
         </View>
 
-        {topReview && <Text style={styles.reviewSnippet}>"{topReview.text}"</Text>}
+        {place.aiHighlight ? (
+          <Text style={styles.aiHighlight}>✨ {place.aiHighlight}</Text>
+        ) : (
+          topReview && <Text style={styles.reviewSnippet}>"{topReview.text}"</Text>
+        )}
       </TouchableOpacity>
     </Link>
   );
@@ -109,5 +115,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontStyle: 'italic',
     color: '#555',
+  },
+  aiHighlight: {
+    marginTop: 10,
+    fontSize: 14,
+    color: '#3949ab',
   },
 });
