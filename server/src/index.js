@@ -1,9 +1,12 @@
 import express from 'express';
 import cors from 'cors';
 
-const QWEN_API_KEY = process.env.QWEN_API_KEY;
-const QWEN_BASE_URL = process.env.QWEN_BASE_URL ?? 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1';
-const QWEN_MODEL = process.env.QWEN_MODEL ?? 'qwen-plus';
+// Qwen is served through Hugging Face's Inference Providers router, which is
+// OpenAI-compatible. HF_MODEL can be "<hf-model-id>" (router picks a provider
+// that serves it) or "<hf-model-id>:<provider>" to pin one explicitly.
+const HF_TOKEN = process.env.HF_TOKEN;
+const HF_BASE_URL = process.env.HF_BASE_URL ?? 'https://router.huggingface.co/v1';
+const HF_MODEL = process.env.HF_MODEL ?? 'Qwen/Qwen2.5-72B-Instruct';
 const PORT = process.env.PORT ?? 3000;
 
 const CACHE_TTL_MS = 30 * 60 * 1000;
@@ -36,7 +39,7 @@ function buildMessages(location, category, places) {
         'You will be given candidate places with their star rating, review count, and a sample of recent ' +
         'reviews. Rank them by genuine quality signal rather than raw star average — weigh review recency, ' +
         'review depth, and specific enthusiastic detail in the review text over generic praise. ' +
-        'Respond with ONLY a JSON object: ' +
+        'Respond with ONLY a JSON object, no markdown formatting: ' +
         '{"recommendations":[{"id":string,"score":number between 0 and 100,"highlight":string, at most 20 words, ' +
         'a specific reason this place is worth the traveler\'s time drawn from the reviews}]}. ' +
         'Include every candidate id exactly once, ordered best first.',
@@ -48,32 +51,48 @@ function buildMessages(location, category, places) {
   ];
 }
 
+// Some providers routed through HF ignore response_format and wrap JSON in
+// prose or a ```json fence, so extract the outermost {...} rather than
+// assuming the content is bare JSON.
+function extractJson(content) {
+  const fenced = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  const candidate = fenced ? fenced[1] : content;
+  const start = candidate.indexOf('{');
+  const end = candidate.lastIndexOf('}');
+  if (start === -1 || end === -1 || end < start) {
+    throw new Error('No JSON object found in model response');
+  }
+  return JSON.parse(candidate.slice(start, end + 1));
+}
+
 async function getQwenRecommendations(location, category, places) {
-  const response = await fetch(`${QWEN_BASE_URL}/chat/completions`, {
+  const response = await fetch(`${HF_BASE_URL}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${QWEN_API_KEY}`,
+      Authorization: `Bearer ${HF_TOKEN}`,
     },
     body: JSON.stringify({
-      model: QWEN_MODEL,
+      model: HF_MODEL,
       messages: buildMessages(location, category, places),
-      response_format: { type: 'json_object' },
       temperature: 0.3,
     }),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Qwen API error ${response.status}: ${errorText}`);
+    throw new Error(`Hugging Face API error ${response.status}: ${errorText}`);
   }
 
   const completion = await response.json();
   const content = completion.choices?.[0]?.message?.content;
-  const parsed = JSON.parse(content);
+  if (!content) {
+    throw new Error('Hugging Face response had no message content');
+  }
+  const parsed = extractJson(content);
 
   if (!Array.isArray(parsed.recommendations)) {
-    throw new Error('Qwen response did not include a recommendations array');
+    throw new Error('Model response did not include a recommendations array');
   }
 
   const validIds = new Set(places.map((place) => place.id));
@@ -82,7 +101,7 @@ async function getQwenRecommendations(location, category, places) {
   );
 
   if (recommendations.length === 0) {
-    throw new Error('Qwen response contained no recommendations matching the request');
+    throw new Error('Model response contained no recommendations matching the request');
   }
 
   return recommendations;
@@ -93,7 +112,7 @@ app.use(cors());
 app.use(express.json({ limit: '1mb' }));
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, qwenConfigured: Boolean(QWEN_API_KEY) });
+  res.json({ ok: true, qwenConfigured: Boolean(HF_TOKEN) });
 });
 
 app.post('/api/recommendations', async (req, res) => {
@@ -104,8 +123,8 @@ app.post('/api/recommendations', async (req, res) => {
     return;
   }
 
-  if (!QWEN_API_KEY) {
-    res.status(503).json({ error: 'QWEN_API_KEY is not configured on the server' });
+  if (!HF_TOKEN) {
+    res.status(503).json({ error: 'HF_TOKEN is not configured on the server' });
     return;
   }
 
