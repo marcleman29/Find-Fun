@@ -19,11 +19,24 @@ Type in a location → get curated, high-signal recommendations pulled from Goog
 - **State management:** TBD
 
 ## Status
-🚧 Early planning stage — repo just initialized.
+🚧 Early development — Expo scaffold in place, running on mock data.
 
 ## Roadmap
-- [ ] Set up Expo project scaffold
+- [x] Set up Expo project scaffold
 - [ ] Google Places API integration
-- [ ] Build ranking algorithm for "best of" filtering
-- [ ] Design UI for search + results
-- [ ] Category filtering (food / activities / attractions)
+- [x] Build ranking algorithm for "best of" filtering (initial version, mock data)
+- [x] Design UI for search + results (initial version, mock data)
+- [x] Category filtering (food / activities / attractions)
+
+## Project Structure
+- `app/` — expo-router screens: `(tabs)/index.tsx` (search + results), `(tabs)/saved.tsx` (favorites), `place/[id].tsx` (place detail)
+- `components/` — `LocationSearchBar`, `CategoryPills`, `PlaceCard`
+- `contexts/FavoritesContext.tsx` — in-memory favorite/save state
+- `lib/ranking.ts` — quality-score ranking (recency-weighted rating × review depth), stands in for the real algorithm until review data is live
+- `data/mockPlaces.ts` — placeholder dataset shaped like the future Places/Reviews API response
+
+## Running locally
+```
+npm install
+npm run start   # then press i/a/w, or scan the QR code in Expo Go
+```
