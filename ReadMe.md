@@ -61,3 +61,16 @@ Each integration degrades independently and the app stays usable without either 
 Getting a SerpApi key: sign up at [serpapi.com](https://serpapi.com), grab the API key from your account dashboard. Each place search + its review fetches count against your plan's search quota — the server caches Places responses for 6 hours per location/category to limit repeat calls.
 
 By default the app points at `http://localhost:3000`. This works for the iOS Simulator and web, but **not** for a physical device or Expo Go over the network — `localhost` there resolves to the device itself. In that case, set `EXPO_PUBLIC_API_BASE_URL` to your machine's LAN IP (shown when you run `npm run start`), e.g. `EXPO_PUBLIC_API_BASE_URL=http://192.168.1.23:3000 npm run start`.
+
+## Deploying the server (so a built/installed app can reach it)
+
+A locally-run server only works for the Simulator or devices on the same LAN. For an installed APK (or anyone outside your network) to get real results, `server/` needs to run somewhere with a public URL.
+
+**Render** (`render.yaml` in the repo root is a ready-made Blueprint):
+1. Push this repo to GitHub (already done) and sign up at [render.com](https://render.com).
+2. **New → Blueprint**, connect this repo. Render reads `render.yaml` and proposes a `find-fun-server` web service rooted at `server/`.
+3. When prompted, paste in `HF_TOKEN` and `SERPAPI_KEY` (marked `sync: false` in the blueprint so they're never committed to git).
+4. Deploy. Render gives you a public URL like `https://find-fun-server.onrender.com`.
+5. Update `eas.json`'s `preview` build profile with `"env": { "EXPO_PUBLIC_API_BASE_URL": "https://find-fun-server.onrender.com" } }`, then rebuild the APK (`eas build --platform android --profile preview`) so it's baked into the bundle — `EXPO_PUBLIC_*` vars are inlined at build time, not read at runtime, so a URL change always needs a rebuild.
+
+Note: Render's free tier spins the service down after inactivity, so the first request after a while will be slow (a "cold start") while it wakes back up.

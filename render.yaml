@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: find-fun-server
+    runtime: node
+    rootDir: server
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: HF_TOKEN
+        sync: false
+      - key: HF_BASE_URL
+        value: https://router.huggingface.co/v1
+      - key: HF_MODEL
+        value: Qwen/Qwen2.5-72B-Instruct
+      - key: SERPAPI_KEY
+        sync: false
