@@ -134,6 +134,59 @@ const paidApiLimiter = rateLimit({
   message: { error: 'Too many requests — please try again later.' },
 });
 
+// Supabase's confirmation email links redirect here (Site URL in Auth
+// settings) once the email is verified server-side. Without this, the
+// redirect falls through to Supabase's default (often an unreachable
+// localhost URL), which looks broken even though confirmation succeeded.
+app.get('/confirmed', (_req, res) => {
+  res.type('html').send(`<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Find Fun</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #f7f7fb;
+      font-family: -apple-system, Roboto, Helvetica, Arial, sans-serif;
+    }
+    .card {
+      max-width: 360px;
+      padding: 32px 28px;
+      text-align: center;
+    }
+    .check {
+      font-size: 48px;
+      margin-bottom: 12px;
+    }
+    h1 {
+      color: #1a1a2e;
+      font-size: 22px;
+      margin: 0 0 8px;
+    }
+    p {
+      color: #777;
+      font-size: 15px;
+      line-height: 1.5;
+      margin: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="check">✅</div>
+    <h1>Email confirmed</h1>
+    <p>Your Find Fun account is verified. Head back to the app and sign in.</p>
+  </div>
+</body>
+</html>`);
+});
+
 app.get('/health', (_req, res) => {
   res.json({
     ok: true,
