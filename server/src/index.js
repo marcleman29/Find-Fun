@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import { rateLimit } from 'express-rate-limit';
 
 import { CATEGORY_QUERIES, fetchPlaces } from './places.js';
 
@@ -115,14 +116,28 @@ async function getQwenRecommendations(location, category, places) {
 }
 
 const app = express();
+// Render (like most PaaS) puts the app behind a reverse proxy, so without
+// this every request looks like it comes from the same internal IP and the
+// limiter below would apply globally instead of per client.
+app.set('trust proxy', 1);
 app.use(cors());
 app.use(express.json({ limit: '1mb' }));
+
+// Per-IP stopgap against abuse of the paid-per-call SerpApi/Qwen endpoints
+// until real per-user accounts + quotas exist. Not applied to /health.
+const paidApiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests — please try again later.' },
+});
 
 app.get('/health', (_req, res) => {
   res.json({ ok: true, qwenConfigured: Boolean(HF_TOKEN), placesConfigured: Boolean(SERPAPI_KEY) });
 });
 
-app.get('/api/places', async (req, res) => {
+app.get('/api/places', paidApiLimiter, async (req, res) => {
   const { location, category } = req.query;
 
   if (typeof location !== 'string' || !location.trim() || !Object.hasOwn(CATEGORY_QUERIES, category ?? '')) {
@@ -152,7 +167,7 @@ app.get('/api/places', async (req, res) => {
   }
 });
 
-app.post('/api/recommendations', async (req, res) => {
+app.post('/api/recommendations', paidApiLimiter, async (req, res) => {
   const { location, category, places } = req.body ?? {};
 
   if (typeof location !== 'string' || typeof category !== 'string' || !Array.isArray(places) || places.length === 0) {
