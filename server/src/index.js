@@ -3,6 +3,7 @@ import cors from 'cors';
 import { rateLimit } from 'express-rate-limit';
 
 import { CATEGORY_QUERIES, fetchPlaces } from './places.js';
+import { enforceQuota, requireAuth, supabaseAdmin } from './auth.js';
 
 // Qwen is served through Hugging Face's Inference Providers router, which is
 // OpenAI-compatible. HF_MODEL can be "<hf-model-id>" (router picks a provider
@@ -134,10 +135,15 @@ const paidApiLimiter = rateLimit({
 });
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, qwenConfigured: Boolean(HF_TOKEN), placesConfigured: Boolean(SERPAPI_KEY) });
+  res.json({
+    ok: true,
+    qwenConfigured: Boolean(HF_TOKEN),
+    placesConfigured: Boolean(SERPAPI_KEY),
+    authConfigured: Boolean(supabaseAdmin),
+  });
 });
 
-app.get('/api/places', paidApiLimiter, async (req, res) => {
+app.get('/api/places', paidApiLimiter, requireAuth(), enforceQuota(), async (req, res) => {
   const { location, category } = req.query;
 
   if (typeof location !== 'string' || !location.trim() || !Object.hasOwn(CATEGORY_QUERIES, category ?? '')) {
@@ -167,7 +173,7 @@ app.get('/api/places', paidApiLimiter, async (req, res) => {
   }
 });
 
-app.post('/api/recommendations', paidApiLimiter, async (req, res) => {
+app.post('/api/recommendations', paidApiLimiter, requireAuth(), enforceQuota(), async (req, res) => {
   const { location, category, places } = req.body ?? {};
 
   if (typeof location !== 'string' || typeof category !== 'string' || !Array.isArray(places) || places.length === 0) {

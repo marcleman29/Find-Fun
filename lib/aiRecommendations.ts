@@ -1,4 +1,5 @@
 import { rankPlaces } from './ranking';
+import { supabase } from './supabase';
 import type { Place, PlaceCategory, RankedPlace } from './types';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:3000';
@@ -30,9 +31,15 @@ export async function getRankedPlaces(
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
     const response = await fetch(`${API_BASE_URL}/api/recommendations`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
+      },
       body: JSON.stringify({ location, category, places }),
       signal: controller.signal,
     }).finally(() => clearTimeout(timeout));
