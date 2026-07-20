@@ -14,7 +14,9 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://find-fun-server.onrender.com"
+        "EXPO_PUBLIC_API_BASE_URL": "https://find-fun-server.onrender.com",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://vuxyswppwtkurvpixyve.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_UdlrMgQk22aFDEw5obKl-Q_cXtwzaHo"
       }
     },
     "production": {
