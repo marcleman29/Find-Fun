@@ -24,6 +24,12 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "owner": "marcle22s-team",
+    "extra": {
+      "eas": {
+        "projectId": "3bac3b84-fc66-42d1-abb2-44feb558ef52"
+      }
     }
   }
 }
