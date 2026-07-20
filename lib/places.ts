@@ -1,3 +1,4 @@
+import { supabase } from './supabase';
 import type { Place, PlaceCategory } from './types';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:3000';
@@ -14,9 +15,13 @@ export async function fetchPlaces(location: string, category: PlaceCategory): Pr
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
     const params = new URLSearchParams({ location, category });
     const response = await fetch(`${API_BASE_URL}/api/places?${params.toString()}`, {
       signal: controller.signal,
+      headers: session ? { Authorization: `Bearer ${session.access_token}` } : undefined,
     }).finally(() => clearTimeout(timeout));
 
     if (!response.ok) {
