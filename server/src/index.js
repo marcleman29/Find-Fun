@@ -1,16 +1,21 @@
 import express from 'express';
 import cors from 'cors';
 
+import { CATEGORY_QUERIES, fetchPlaces } from './places.js';
+
 // Qwen is served through Hugging Face's Inference Providers router, which is
 // OpenAI-compatible. HF_MODEL can be "<hf-model-id>" (router picks a provider
 // that serves it) or "<hf-model-id>:<provider>" to pin one explicitly.
 const HF_TOKEN = process.env.HF_TOKEN;
 const HF_BASE_URL = process.env.HF_BASE_URL ?? 'https://router.huggingface.co/v1';
 const HF_MODEL = process.env.HF_MODEL ?? 'Qwen/Qwen2.5-72B-Instruct';
+const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY;
 const PORT = process.env.PORT ?? 3000;
 
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const cache = new Map();
+const PLACES_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const placesCache = new Map();
 
 function cacheKey(location, category, places) {
   const ids = places.map((place) => place.id).sort().join(',');
@@ -112,7 +117,37 @@ app.use(cors());
 app.use(express.json({ limit: '1mb' }));
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, qwenConfigured: Boolean(HF_TOKEN) });
+  res.json({ ok: true, qwenConfigured: Boolean(HF_TOKEN), placesConfigured: Boolean(GOOGLE_PLACES_API_KEY) });
+});
+
+app.get('/api/places', async (req, res) => {
+  const { location, category } = req.query;
+
+  if (typeof location !== 'string' || !location.trim() || !Object.hasOwn(CATEGORY_QUERIES, category ?? '')) {
+    res.status(400).json({ error: 'location (non-empty string) and a valid category are required' });
+    return;
+  }
+
+  if (!GOOGLE_PLACES_API_KEY) {
+    res.status(503).json({ error: 'GOOGLE_PLACES_API_KEY is not configured on the server' });
+    return;
+  }
+
+  const key = `${location.toLowerCase()}::${category}`;
+  const cached = placesCache.get(key);
+  if (cached && cached.expires > Date.now()) {
+    res.json({ source: 'google', places: cached.places });
+    return;
+  }
+
+  try {
+    const places = await fetchPlaces(GOOGLE_PLACES_API_KEY, location, category);
+    placesCache.set(key, { places, expires: Date.now() + PLACES_CACHE_TTL_MS });
+    res.json({ source: 'google', places });
+  } catch (error) {
+    console.error('Google Places request failed:', error);
+    res.status(502).json({ error: 'Failed to fetch places from Google' });
+  }
 });
 
 app.post('/api/recommendations', async (req, res) => {

@@ -7,6 +7,7 @@ import { PlaceCard } from '../../components/PlaceCard';
 import { useFavorites } from '../../contexts/FavoritesContext';
 import { mockLocation, mockPlaces } from '../../data/mockPlaces';
 import { getRankedPlaces } from '../../lib/aiRecommendations';
+import { fetchPlaces } from '../../lib/places';
 import type { PlaceCategory, RankedPlace } from '../../lib/types';
 
 export default function SearchScreen() {
@@ -15,23 +16,30 @@ export default function SearchScreen() {
   const [category, setCategory] = useState<PlaceCategory>('thingsToDo');
   const [results, setResults] = useState<RankedPlace[]>([]);
   const [loading, setLoading] = useState(true);
-  const [source, setSource] = useState<'qwen' | 'fallback'>('fallback');
+  const [placesSource, setPlacesSource] = useState<'google' | 'mock'>('mock');
+  const [rankingSource, setRankingSource] = useState<'qwen' | 'fallback'>('fallback');
   const { isFavorite, toggleFavorite } = useFavorites();
 
-  // Location search doesn't hit a real Places API yet (roadmap item 2) — every
-  // search currently resolves to the same mock dataset, ranked by Qwen with a
-  // local fallback if the AI ranking server is unavailable.
+  // Places come from the server's Google Places-backed endpoint when it's
+  // configured; if that's unavailable (no server, no API key, network error)
+  // this falls back to the bundled mock dataset so search still works.
+  // Ranking is a separate fallback: Qwen when available, a local heuristic
+  // otherwise — independent of where the underlying places came from.
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
 
-    const candidates = mockPlaces.filter((place) => place.category === category);
-    getRankedPlaces(searchedLocation, category, candidates).then((result) => {
+    (async () => {
+      const fetchedPlaces = await fetchPlaces(searchedLocation, category);
+      const candidates = fetchedPlaces ?? mockPlaces.filter((place) => place.category === category);
+      const result = await getRankedPlaces(searchedLocation, category, candidates);
+
       if (cancelled) return;
       setResults(result.ranked);
-      setSource(result.source);
+      setRankingSource(result.source);
+      setPlacesSource(fetchedPlaces ? 'google' : 'mock');
       setLoading(false);
-    });
+    })();
 
     return () => {
       cancelled = true;
@@ -47,7 +55,10 @@ export default function SearchScreen() {
       />
       <Text style={styles.locationLabel}>Showing results for {searchedLocation}</Text>
       <CategoryPills selected={category} onSelect={setCategory} />
-      {!loading && source === 'fallback' && (
+      {!loading && placesSource === 'mock' && (
+        <Text style={styles.fallbackNotice}>Live place search unavailable — showing sample data</Text>
+      )}
+      {!loading && rankingSource === 'fallback' && (
         <Text style={styles.fallbackNotice}>AI ranking unavailable — showing basic ranking</Text>
       )}
       {loading ? (
