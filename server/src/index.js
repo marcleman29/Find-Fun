@@ -9,7 +9,9 @@ import { CATEGORY_QUERIES, fetchPlaces } from './places.js';
 const HF_TOKEN = process.env.HF_TOKEN;
 const HF_BASE_URL = process.env.HF_BASE_URL ?? 'https://router.huggingface.co/v1';
 const HF_MODEL = process.env.HF_MODEL ?? 'Qwen/Qwen2.5-72B-Instruct';
-const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY;
+// Places come from SerpApi's Google Maps engines, not Google's own Places
+// API — see the comment in places.js for why.
+const SERPAPI_KEY = process.env.SERPAPI_KEY;
 const PORT = process.env.PORT ?? 3000;
 
 const CACHE_TTL_MS = 30 * 60 * 1000;
@@ -117,7 +119,7 @@ app.use(cors());
 app.use(express.json({ limit: '1mb' }));
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, qwenConfigured: Boolean(HF_TOKEN), placesConfigured: Boolean(GOOGLE_PLACES_API_KEY) });
+  res.json({ ok: true, qwenConfigured: Boolean(HF_TOKEN), placesConfigured: Boolean(SERPAPI_KEY) });
 });
 
 app.get('/api/places', async (req, res) => {
@@ -128,8 +130,8 @@ app.get('/api/places', async (req, res) => {
     return;
   }
 
-  if (!GOOGLE_PLACES_API_KEY) {
-    res.status(503).json({ error: 'GOOGLE_PLACES_API_KEY is not configured on the server' });
+  if (!SERPAPI_KEY) {
+    res.status(503).json({ error: 'SERPAPI_KEY is not configured on the server' });
     return;
   }
 
@@ -141,12 +143,12 @@ app.get('/api/places', async (req, res) => {
   }
 
   try {
-    const places = await fetchPlaces(GOOGLE_PLACES_API_KEY, location, category);
+    const places = await fetchPlaces(SERPAPI_KEY, location, category);
     placesCache.set(key, { places, expires: Date.now() + PLACES_CACHE_TTL_MS });
     res.json({ source: 'google', places });
   } catch (error) {
-    console.error('Google Places request failed:', error);
-    res.status(502).json({ error: 'Failed to fetch places from Google' });
+    console.error('Places request failed:', error);
+    res.status(502).json({ error: 'Failed to fetch places' });
   }
 });
 
