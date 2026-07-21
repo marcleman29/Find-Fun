@@ -15,6 +15,7 @@ export default function PlaceDetailScreen() {
   const { id, place: placeParam } = useLocalSearchParams<{ id: string; place?: string }>();
   const { isFavorite, toggleFavorite } = useFavorites();
   const [likeInfo, setLikeInfo] = useState<LikeInfo>({ count: 0, likedByMe: false });
+  const [liking, setLiking] = useState(false);
 
   // PlaceCard passes the full place it already has (real SerpApi results or
   // AI-ranked mock data) via params — looking it up by id in the bundled
@@ -53,11 +54,17 @@ export default function PlaceDetailScreen() {
   const favorite = isFavorite(place.id);
 
   const handleLike = async () => {
+    // Guard against a rapid double-tap firing two toggles before the first
+    // resolves — the server does a read-then-write, not an atomic upsert,
+    // so two concurrent requests can race into a duplicate-key error.
+    if (liking) return;
+    setLiking(true);
     // Optimistic update — a failed toggle just means the next fetch
     // corrects it, not worth blocking the tap on a round trip.
     setLikeInfo((prev) => ({ count: prev.likedByMe ? prev.count - 1 : prev.count + 1, likedByMe: !prev.likedByMe }));
     const result = await toggleLike(place!.id);
     if (result) setLikeInfo(result);
+    setLiking(false);
   };
 
   return (
@@ -82,7 +89,7 @@ export default function PlaceDetailScreen() {
               <Text style={styles.score}>Quality score {place.qualityScore}</Text>
             </View>
 
-            <PressableScale onPress={handleLike}>
+            <PressableScale onPress={handleLike} disabled={liking}>
               <View style={styles.likeButton}>
                 <Ionicons
                   name={likeInfo.likedByMe ? 'thumbs-up' : 'thumbs-up-outline'}
