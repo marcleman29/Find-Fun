@@ -280,6 +280,80 @@ app.post('/api/recommendations', paidApiLimiter, requireAuth(), enforceQuota(), 
   }
 });
 
+const MAX_LIKE_IDS_PER_REQUEST = 50;
+
+// Community likes are free/unlimited — no paidApiLimiter or enforceQuota,
+// since these don't call SerpApi/Qwen and shouldn't compete with a user's
+// monthly search allowance.
+app.get('/api/likes', requireAuth(), async (req, res) => {
+  const idsParam = req.query.ids;
+  if (typeof idsParam !== 'string' || !idsParam.trim()) {
+    res.status(400).json({ error: 'ids (comma-separated place IDs) is required' });
+    return;
+  }
+
+  const ids = [...new Set(idsParam.split(',').map((id) => id.trim()).filter(Boolean))].slice(
+    0,
+    MAX_LIKE_IDS_PER_REQUEST
+  );
+
+  const { data, error } = await supabaseAdmin.from('place_likes').select('place_id, user_id').in('place_id', ids);
+
+  if (error) {
+    console.error('Fetching likes failed:', error);
+    res.status(500).json({ error: 'Could not load likes' });
+    return;
+  }
+
+  const likes = Object.fromEntries(ids.map((id) => [id, { count: 0, likedByMe: false }]));
+  for (const row of data) {
+    likes[row.place_id].count += 1;
+    if (row.user_id === req.userId) likes[row.place_id].likedByMe = true;
+  }
+
+  res.json({ likes });
+});
+
+app.post('/api/places/:placeId/like', requireAuth(), async (req, res) => {
+  const { placeId } = req.params;
+
+  const { data: existing, error: lookupError } = await supabaseAdmin
+    .from('place_likes')
+    .select('place_id')
+    .eq('user_id', req.userId)
+    .eq('place_id', placeId)
+    .maybeSingle();
+
+  if (lookupError) {
+    console.error('Like lookup failed:', lookupError);
+    res.status(500).json({ error: 'Could not update like' });
+    return;
+  }
+
+  const writeError = existing
+    ? (await supabaseAdmin.from('place_likes').delete().eq('user_id', req.userId).eq('place_id', placeId)).error
+    : (await supabaseAdmin.from('place_likes').insert({ user_id: req.userId, place_id: placeId })).error;
+
+  if (writeError) {
+    console.error('Like write failed:', writeError);
+    res.status(500).json({ error: 'Could not update like' });
+    return;
+  }
+
+  const { count, error: countError } = await supabaseAdmin
+    .from('place_likes')
+    .select('*', { count: 'exact', head: true })
+    .eq('place_id', placeId);
+
+  if (countError) {
+    console.error('Like count failed:', countError);
+    res.status(500).json({ error: 'Could not update like' });
+    return;
+  }
+
+  res.json({ liked: !existing, count: count ?? 0 });
+});
+
 app.listen(PORT, () => {
   console.log(`Find-Fun recommendations server listening on port ${PORT}`);
 });

@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Link } from 'expo-router';
 import { useState } from 'react';
@@ -13,9 +14,12 @@ interface PlaceCardProps {
   place: RankedPlace;
   isFavorite: boolean;
   onToggleFavorite: (placeId: string) => void;
+  // Only passed when sorted by Trending — swaps the score badge for the like
+  // count instead of stacking a third number onto every card permanently.
+  likeCount?: number;
 }
 
-export function PlaceCard({ place, isFavorite, onToggleFavorite }: PlaceCardProps) {
+export function PlaceCard({ place, isFavorite, onToggleFavorite, likeCount }: PlaceCardProps) {
   const topReview = place.topReviews[0];
   const { color, gradient } = getCategoryMeta(place.category);
   // Real place photos come from SerpApi; mock data and the occasional dead
@@ -25,7 +29,7 @@ export function PlaceCard({ place, isFavorite, onToggleFavorite }: PlaceCardProp
   const showPhoto = Boolean(place.photoUrl) && !photoFailed;
 
   return (
-    <Link href={{ pathname: '/place/[id]', params: { id: place.id } }} asChild>
+    <Link href={{ pathname: '/place/[id]', params: { id: place.id, place: JSON.stringify(place) } }} asChild>
       <PressableScale scaleTo={0.98} style={styles.card}>
         {showPhoto ? (
           <Image
@@ -66,9 +70,18 @@ export function PlaceCard({ place, isFavorite, onToggleFavorite }: PlaceCardProp
               ★ {place.rating.toFixed(1)} ({place.reviewCount.toLocaleString()})
             </Text>
             <View style={[styles.scoreBadge, { backgroundColor: `${color}1a` }]}>
-              <Text style={[styles.scoreBadgeText, { color }]}>
-                {place.aiHighlight !== undefined ? 'AI score' : 'Quality score'} {place.qualityScore}
-              </Text>
+              {likeCount !== undefined ? (
+                <View style={styles.scoreBadgeRow}>
+                  <Ionicons name="thumbs-up" size={11} color={color} />
+                  <Text style={[styles.scoreBadgeText, { color }]}>
+                    {likeCount} {likeCount === 1 ? 'like' : 'likes'}
+                  </Text>
+                </View>
+              ) : (
+                <Text style={[styles.scoreBadgeText, { color }]}>
+                  {place.aiHighlight !== undefined ? 'AI score' : 'Quality score'} {place.qualityScore}
+                </Text>
+              )}
             </View>
           </View>
 
@@ -147,6 +160,11 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: 8,
     backgroundColor: '#eef2ff',
+  },
+  scoreBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   scoreBadgeText: {
     fontSize: 12,
