@@ -1,4 +1,7 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+
+const STORAGE_KEY = 'find-fun:favorites';
 
 interface FavoritesContextValue {
   favoriteIds: Set<string>;
@@ -10,6 +13,32 @@ const FavoritesContext = createContext<FavoritesContextValue | undefined>(undefi
 
 export function FavoritesProvider({ children }: { children: React.ReactNode }) {
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
+  // Guards against the write effect firing with the initial empty Set before
+  // the stored value has loaded, which would wipe out whatever was saved.
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem(STORAGE_KEY)
+      .then((raw) => {
+        if (raw) {
+          const ids: unknown = JSON.parse(raw);
+          if (Array.isArray(ids)) {
+            setFavoriteIds(new Set(ids));
+          }
+        }
+      })
+      .catch(() => {
+        // Corrupt or unreadable storage — start from empty rather than crash.
+      })
+      .finally(() => setHydrated(true));
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(Array.from(favoriteIds))).catch(() => {
+      // Best-effort persistence — a failed write shouldn't break the UI.
+    });
+  }, [favoriteIds, hydrated]);
 
   const toggleFavorite = useCallback((placeId: string) => {
     setFavoriteIds((prev) => {
