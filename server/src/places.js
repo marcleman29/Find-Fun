@@ -70,6 +70,7 @@ export async function fetchPlaces(apiKey, location, category) {
         address: candidate.address ?? '',
         rating: candidate.rating ?? 0,
         reviewCount: candidate.reviews ?? 0,
+        photoUrl: candidate.thumbnail ?? undefined,
         topReviews: reviews.slice(0, MAX_REVIEWS_PER_PLACE).map((review, index) => ({
           id: `${candidate.data_id}-review-${index}`,
           author: review.user?.name ?? 'Google user',

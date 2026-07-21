@@ -15,15 +15,17 @@ export function CategoryPills({ selected, onSelect }: CategoryPillsProps) {
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.container}
     >
-      {CATEGORIES.map(({ key, label }) => {
+      {CATEGORIES.map(({ key, label, color, emoji }) => {
         const isSelected = key === selected;
         return (
           <TouchableOpacity
             key={key}
             onPress={() => onSelect(key)}
-            style={[styles.pill, isSelected && styles.pillSelected]}
+            style={[styles.pill, isSelected && { backgroundColor: color }]}
           >
-            <Text style={[styles.pillText, isSelected && styles.pillTextSelected]}>{label}</Text>
+            <Text style={[styles.pillText, isSelected && styles.pillTextSelected]}>
+              {emoji} {label}
+            </Text>
           </TouchableOpacity>
         );
       })}
@@ -42,9 +44,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 20,
     backgroundColor: '#f0f0f0',
-  },
-  pillSelected: {
-    backgroundColor: '#1a1a2e',
   },
   pillText: {
     fontSize: 14,

@@ -2,7 +2,11 @@ import { supabase } from './supabase';
 import type { Place, PlaceCategory } from './types';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:3000';
-const REQUEST_TIMEOUT_MS = 10000;
+// The server runs on Render's free tier, which spins the instance down after
+// idle and can take 30-50s to cold-start on the next request. A short
+// timeout here would make every "first request after idle" silently fall
+// back to mock data even though the server is healthy, just slow to wake.
+const REQUEST_TIMEOUT_MS = 45000;
 
 /**
  * Fetches real places from the server's Google Places-backed endpoint.

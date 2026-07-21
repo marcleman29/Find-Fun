@@ -62,7 +62,12 @@ export default function SearchScreen() {
         <Text style={styles.fallbackNotice}>AI ranking unavailable — showing basic ranking</Text>
       )}
       {loading ? (
-        <ActivityIndicator style={styles.loading} size="large" color="#1a1a2e" />
+        <View style={styles.loading}>
+          <ActivityIndicator size="large" color="#1a1a2e" />
+          <Text style={styles.loadingHint}>
+            Finding the best spots — this can take up to 30s if the server is waking up.
+          </Text>
+        </View>
       ) : (
         <FlatList
           data={results}
@@ -97,6 +102,14 @@ const styles = StyleSheet.create({
   },
   loading: {
     marginTop: 40,
+    alignItems: 'center',
+    gap: 12,
+  },
+  loadingHint: {
+    fontSize: 13,
+    color: '#999',
+    textAlign: 'center',
+    paddingHorizontal: 40,
   },
   listContent: {
     paddingBottom: 24,
