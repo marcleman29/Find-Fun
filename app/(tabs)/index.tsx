@@ -35,6 +35,7 @@ export default function SearchScreen() {
   const [placesSource, setPlacesSource] = useState<'google' | 'mock'>('mock');
   const [rankingSource, setRankingSource] = useState<'qwen' | 'fallback'>('fallback');
   const [failureReason, setFailureReason] = useState<FetchFailureReason | null>(null);
+  const [failureDetail, setFailureDetail] = useState<string | null>(null);
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [locating, setLocating] = useState(false);
   const { isFavorite, toggleFavorite } = useFavorites();
@@ -62,6 +63,7 @@ export default function SearchScreen() {
       // Prefer the places failure reason since it happens first in the
       // pipeline and is more likely the root cause of both fallbacks.
       setFailureReason(placesResult.reason ?? rankingResult.reason);
+      setFailureDetail(placesResult.detail ?? rankingResult.detail);
       setLoading(false);
     })();
 
@@ -136,6 +138,7 @@ export default function SearchScreen() {
       {!loading && (placesSource === 'mock' || rankingSource === 'fallback') && (
         <Text style={styles.fallbackNotice}>
           {failureReason ? REASON_MESSAGES[failureReason] : 'Live search unavailable — showing sample data'}
+          {failureDetail ? ` (${failureDetail})` : ''}
         </Text>
       )}
       {loading ? (

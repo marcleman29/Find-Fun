@@ -19,6 +19,7 @@ export interface RankingResult {
   ranked: RankedPlace[];
   source: 'qwen' | 'fallback';
   reason: FetchFailureReason | null;
+  detail: string | null;
 }
 
 function reasonForStatus(status: number): FetchFailureReason {
@@ -26,6 +27,18 @@ function reasonForStatus(status: number): FetchFailureReason {
   if (status === 429) return 'quota';
   if (status >= 500) return 'server';
   return 'network';
+}
+
+// The server's error responses are short, fixed, non-secret strings (e.g.
+// "Could not load account") — safe to show directly instead of a generic
+// "server error" that hides which of several checks actually failed.
+async function readErrorDetail(response: Response): Promise<string | null> {
+  try {
+    const body: { error?: string } = await response.json();
+    return body.error ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -42,6 +55,7 @@ export async function getRankedPlaces(
   places: Place[]
 ): Promise<RankingResult> {
   let reason: FetchFailureReason = 'network';
+  let detail: string | null = null;
 
   try {
     const controller = new AbortController();
@@ -62,6 +76,7 @@ export async function getRankedPlaces(
 
     if (!response.ok) {
       reason = reasonForStatus(response.status);
+      detail = await readErrorDetail(response);
       throw new Error(`Recommendations request failed with status ${response.status}`);
     }
 
@@ -78,11 +93,13 @@ export async function getRankedPlaces(
       .sort((a, b) => b.qualityScore - a.qualityScore);
 
     if (ranked.length === 0) {
-      throw new Error('Qwen returned no usable recommendations');
+      reason = 'server';
+      detail = 'Qwen returned no usable recommendations';
+      throw new Error(detail);
     }
 
-    return { ranked, source: 'qwen', reason: null };
+    return { ranked, source: 'qwen', reason: null, detail: null };
   } catch {
-    return { ranked: rankPlaces(places), source: 'fallback', reason };
+    return { ranked: rankPlaces(places), source: 'fallback', reason, detail };
   }
 }

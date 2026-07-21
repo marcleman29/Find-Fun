@@ -13,6 +13,7 @@ export type FetchFailureReason = 'auth' | 'quota' | 'server' | 'network';
 export interface FetchPlacesResult {
   places: Place[] | null;
   reason: FetchFailureReason | null;
+  detail: string | null;
 }
 
 function reasonForStatus(status: number): FetchFailureReason {
@@ -20,6 +21,18 @@ function reasonForStatus(status: number): FetchFailureReason {
   if (status === 429) return 'quota';
   if (status >= 500) return 'server';
   return 'network';
+}
+
+// The server's error responses are short, fixed, non-secret strings (e.g.
+// "Could not load account") — safe to show directly instead of a generic
+// "server error" that hides which of several checks actually failed.
+async function readErrorDetail(response: Response): Promise<string | null> {
+  try {
+    const body: { error?: string } = await response.json();
+    return body.error ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -53,12 +66,14 @@ export async function fetchPlaces(
     }).finally(() => clearTimeout(timeout));
 
     if (!response.ok) {
-      return { places: null, reason: reasonForStatus(response.status) };
+      return { places: null, reason: reasonForStatus(response.status), detail: await readErrorDetail(response) };
     }
 
     const data: { places: Place[] } = await response.json();
-    return data.places.length > 0 ? { places: data.places, reason: null } : { places: null, reason: null };
+    return data.places.length > 0
+      ? { places: data.places, reason: null, detail: null }
+      : { places: null, reason: null, detail: null };
   } catch {
-    return { places: null, reason: 'network' };
+    return { places: null, reason: 'network', detail: null };
   }
 }
