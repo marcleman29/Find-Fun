@@ -1,3 +1,4 @@
+import { LinearGradient } from 'expo-linear-gradient';
 import { ScrollView, StyleSheet, Text, TouchableOpacity } from 'react-native';
 
 import { CATEGORIES } from '../lib/categories';
@@ -15,15 +16,26 @@ export function CategoryPills({ selected, onSelect }: CategoryPillsProps) {
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.container}
     >
-      {CATEGORIES.map(({ key, label }) => {
+      {CATEGORIES.map(({ key, label, gradient, emoji }) => {
         const isSelected = key === selected;
         return (
-          <TouchableOpacity
-            key={key}
-            onPress={() => onSelect(key)}
-            style={[styles.pill, isSelected && styles.pillSelected]}
-          >
-            <Text style={[styles.pillText, isSelected && styles.pillTextSelected]}>{label}</Text>
+          <TouchableOpacity key={key} onPress={() => onSelect(key)}>
+            {isSelected ? (
+              <LinearGradient
+                colors={gradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.pill}
+              >
+                <Text style={[styles.pillText, styles.pillTextSelected]}>
+                  {emoji} {label}
+                </Text>
+              </LinearGradient>
+            ) : (
+              <Text style={[styles.pill, styles.pillText]}>
+                {emoji} {label}
+              </Text>
+            )}
           </TouchableOpacity>
         );
       })}
@@ -42,9 +54,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 20,
     backgroundColor: '#f0f0f0',
-  },
-  pillSelected: {
-    backgroundColor: '#1a1a2e',
+    overflow: 'hidden',
   },
   pillText: {
     fontSize: 14,

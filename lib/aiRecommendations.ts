@@ -3,7 +3,10 @@ import { supabase } from './supabase';
 import type { Place, PlaceCategory, RankedPlace } from './types';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:3000';
-const REQUEST_TIMEOUT_MS = 10000;
+// See the matching comment in lib/places.ts — Render free-tier cold starts
+// can take well past 10s, so a short timeout here defeats Qwen ranking on
+// every first request after idle.
+const REQUEST_TIMEOUT_MS = 45000;
 
 interface QwenRecommendation {
   id: string;

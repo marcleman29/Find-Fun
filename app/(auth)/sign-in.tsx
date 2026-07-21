@@ -1,14 +1,17 @@
+import { LinearGradient } from 'expo-linear-gradient';
 import { useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -20,11 +23,31 @@ function isUnconfirmedEmailError(message: string): boolean {
   return message.toLowerCase().includes('confirm');
 }
 
+// Sign-up gets its own accent so the two forms read as visually distinct
+// screens rather than one form with a different button label.
+const MODE_THEME = {
+  signIn: {
+    accent: '#1a1a2e',
+    gradient: ['#1a1a2e', '#3949ab'] as [string, string],
+    emoji: '🔑',
+    headline: 'Welcome back',
+    subtitle: 'Sign in to continue',
+  },
+  signUp: {
+    accent: '#0d9488',
+    gradient: ['#0d9488', '#22d3ee'] as [string, string],
+    emoji: '✨',
+    headline: 'Join Find Fun',
+    subtitle: 'Create an account to get personalized picks',
+  },
+} as const;
+
 export default function SignInScreen() {
   const { signIn, signUp } = useAuth();
   const [mode, setMode] = useState<'signIn' | 'signUp'>('signIn');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -32,9 +55,17 @@ export default function SignInScreen() {
   const [resending, setResending] = useState(false);
   const [resent, setResent] = useState(false);
 
+  const theme = MODE_THEME[mode];
+
   const handleSubmit = async () => {
     setError(null);
     setResent(false);
+
+    if (mode === 'signUp' && password !== confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+
     setSubmitting(true);
     const result = mode === 'signIn' ? await signIn(email, password) : await signUp(email, password);
     setSubmitting(false);
@@ -69,99 +100,151 @@ export default function SignInScreen() {
     setResent(!resendError);
   };
 
+  const switchMode = () => {
+    setMode(mode === 'signIn' ? 'signUp' : 'signIn');
+    setError(null);
+    setPendingVerificationEmail(null);
+    setPassword('');
+    setConfirmPassword('');
+  };
+
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Text style={styles.title}>Find Fun</Text>
-      <Text style={styles.subtitle}>
-        {mode === 'signIn' ? 'Sign in to continue' : 'Create an account to get started'}
-      </Text>
+    <LinearGradient colors={theme.gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.gradient}>
+      <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+        <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+            <Text style={styles.emoji}>{theme.emoji}</Text>
+            <Text style={styles.title}>{theme.headline}</Text>
+            <Text style={styles.subtitle}>{theme.subtitle}</Text>
 
-      {pendingVerificationEmail && (
-        <View style={styles.verificationBanner}>
-          <Text style={styles.verificationText}>
-            Verification pending for {pendingVerificationEmail}. Check your inbox for a confirmation link,
-            then sign in below.
-          </Text>
-          <TouchableOpacity onPress={handleResend} disabled={resending}>
-            <Text style={styles.resendText}>
-              {resending ? 'Resending…' : resent ? 'Email resent' : 'Resend confirmation email'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      )}
+            <View style={styles.card}>
+              {pendingVerificationEmail && (
+                <View style={styles.verificationBanner}>
+                  <Text style={styles.verificationText}>
+                    Verification pending for {pendingVerificationEmail}. Check your inbox for a confirmation
+                    link, then sign in below.
+                  </Text>
+                  <TouchableOpacity onPress={handleResend} disabled={resending}>
+                    <Text style={styles.resendText}>
+                      {resending ? 'Resending…' : resent ? 'Email resent' : 'Resend confirmation email'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
 
-      <View>
-        <TextInput
-          style={styles.input}
-          value={email}
-          onChangeText={setEmail}
-          placeholder="Email"
-          placeholderTextColor="#999"
-          autoCapitalize="none"
-          keyboardType="email-address"
-          autoComplete="email"
-        />
+              <TextInput
+                style={styles.input}
+                value={email}
+                onChangeText={setEmail}
+                placeholder="Email"
+                placeholderTextColor="#999"
+                autoCapitalize="none"
+                keyboardType="email-address"
+                autoComplete="email"
+              />
 
-        <View style={styles.passwordRow}>
-          <TextInput
-            style={[styles.input, styles.passwordInput]}
-            value={password}
-            onChangeText={setPassword}
-            placeholder="Password"
-            placeholderTextColor="#999"
-            secureTextEntry={!showPassword}
-            autoComplete="password"
-          />
-          <TouchableOpacity style={styles.showToggle} onPress={() => setShowPassword((v) => !v)} hitSlop={12}>
-            <Text style={styles.showToggleText}>{showPassword ? 'Hide' : 'Show'}</Text>
-          </TouchableOpacity>
-        </View>
+              <View style={styles.passwordRow}>
+                <TextInput
+                  style={[styles.input, styles.passwordInput]}
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="Password"
+                  placeholderTextColor="#999"
+                  secureTextEntry={!showPassword}
+                  autoComplete="password"
+                />
+                <TouchableOpacity style={styles.showToggle} onPress={() => setShowPassword((v) => !v)} hitSlop={12}>
+                  <Text style={[styles.showToggleText, { color: theme.accent }]}>
+                    {showPassword ? 'Hide' : 'Show'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
 
-        {error && <Text style={styles.error}>{error}</Text>}
+              {mode === 'signUp' && (
+                <TextInput
+                  style={styles.input}
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  placeholder="Confirm password"
+                  placeholderTextColor="#999"
+                  secureTextEntry={!showPassword}
+                  autoComplete="password"
+                />
+              )}
 
-        <TouchableOpacity style={styles.button} onPress={handleSubmit} disabled={submitting}>
-          {submitting ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.buttonText}>{mode === 'signIn' ? 'Sign In' : 'Create Account'}</Text>
-          )}
-        </TouchableOpacity>
+              {error && <Text style={styles.error}>{error}</Text>}
 
-        <TouchableOpacity
-          onPress={() => {
-            setMode(mode === 'signIn' ? 'signUp' : 'signIn');
-            setError(null);
-            setPendingVerificationEmail(null);
-          }}
-        >
-          <Text style={styles.toggleText}>
-            {mode === 'signIn' ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
-          </Text>
-        </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
+              <TouchableOpacity onPress={handleSubmit} disabled={submitting}>
+                <LinearGradient
+                  colors={theme.gradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.button}
+                >
+                  {submitting ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.buttonText}>{mode === 'signIn' ? 'Sign In' : 'Create Account'}</Text>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={switchMode}>
+                <Text style={[styles.toggleText, { color: theme.accent }]}>
+                  {mode === 'signIn' ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
+  gradient: {
+    flex: 1,
+  },
+  safeArea: {
+    flex: 1,
+  },
   container: {
     flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
     justifyContent: 'center',
     paddingHorizontal: 24,
-    backgroundColor: '#f7f7fb',
+    paddingVertical: 24,
+  },
+  emoji: {
+    fontSize: 44,
+    textAlign: 'center',
   },
   title: {
-    fontSize: 32,
+    fontSize: 30,
     fontWeight: '700',
-    color: '#1a1a2e',
+    color: '#fff',
     textAlign: 'center',
+    marginTop: 4,
   },
   subtitle: {
     fontSize: 15,
-    color: '#777',
+    color: 'rgba(255,255,255,0.85)',
     textAlign: 'center',
     marginTop: 8,
-    marginBottom: 32,
+    marginBottom: 28,
+  },
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 4,
   },
   verificationBanner: {
     backgroundColor: '#eef2ff',
@@ -205,7 +288,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   showToggleText: {
-    color: '#3949ab',
     fontWeight: '600',
     fontSize: 13,
   },
@@ -215,7 +297,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   button: {
-    backgroundColor: '#1a1a2e',
     borderRadius: 10,
     paddingVertical: 14,
     alignItems: 'center',
@@ -229,7 +310,6 @@ const styles = StyleSheet.create({
   toggleText: {
     textAlign: 'center',
     marginTop: 16,
-    color: '#3949ab',
     fontSize: 14,
   },
 });

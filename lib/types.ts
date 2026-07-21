@@ -16,6 +16,7 @@ export interface Place {
   rating: number;
   reviewCount: number;
   topReviews: ReviewSnippet[];
+  photoUrl?: string;
 }
 
 export interface RankedPlace extends Place {
