@@ -39,13 +39,15 @@ export function LocationSearchBar({ value, onChangeText, onSubmit, onUseCurrentL
         </PressableScale>
       </View>
 
-      <PressableScale onPress={onUseCurrentLocation} disabled={locating} style={styles.nearMePill}>
-        {locating ? (
-          <ActivityIndicator size="small" color="#3949ab" />
-        ) : (
-          <Ionicons name="locate" size={14} color="#3949ab" />
-        )}
-        <Text style={styles.nearMeText}>{locating ? 'Finding you…' : 'Use my current location'}</Text>
+      <PressableScale onPress={onUseCurrentLocation} disabled={locating}>
+        <View style={styles.nearMePill}>
+          {locating ? (
+            <ActivityIndicator size="small" color="#3949ab" />
+          ) : (
+            <Ionicons name="locate" size={14} color="#3949ab" />
+          )}
+          <Text style={styles.nearMeText}>{locating ? 'Finding you…' : 'Use my current location'}</Text>
+        </View>
       </PressableScale>
     </View>
   );

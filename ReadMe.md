@@ -30,6 +30,7 @@ Type in a location → get curated, high-signal recommendations pulled from Goog
 - [x] Category filtering (food / activities / attractions)
 - [x] User accounts (Supabase auth) + per-user monthly search quotas, ahead of subscription tiering
 - [x] "Near me" search using device GPS (biases SerpApi results to your exact location instead of a resolved city name)
+- [x] Community likes + a Trending sort, separate from personal (device-local) favorites
 
 ## Project Structure
 - `app/` — expo-router screens: `(auth)/sign-in.tsx` (login/signup, shown when logged out), `(tabs)/index.tsx` (search + results), `(tabs)/saved.tsx` (favorites + sign out), `place/[id].tsx` (place detail)
@@ -44,6 +45,8 @@ Type in a location → get curated, high-signal recommendations pulled from Goog
 - `server/` — Express API with two paid-API-backed endpoints (see below): `/api/places` (SerpApi-backed places lookup) and `/api/recommendations` (Qwen ranking), both requiring a valid Supabase session and rate-limited per-IP and per-user
 - `server/src/auth.js` — verifies the Supabase session token and enforces monthly quotas
 - `server/supabase/schema.sql` — one-time SQL migration for the `profiles`/`usage_periods` tables and quota-increment function
+- `server/supabase/likes.sql` — one-time SQL migration for `place_likes` (community likes), run after `schema.sql`
+- `lib/likes.ts` — calls the server's `/api/likes` and `/api/places/:id/like` endpoints
 
 ## Running locally
 
@@ -77,6 +80,7 @@ By default the app points at `http://localhost:3000`. This works for the iOS Sim
 
 1. Create a free project at [supabase.com](https://supabase.com).
 2. In the project's **SQL Editor**, paste and run `server/supabase/schema.sql` once. This creates `profiles` (per-user subscription tier, default `'free'`) and `usage_periods` (monthly search counts), an atomic `increment_usage()` function the server calls to enforce quotas without a race condition, and a trigger that gives every new signup a profile row automatically.
+3. Then paste and run `server/supabase/likes.sql` once. This creates `place_likes` (one row per user per liked place, powers the Trending sort) with row-level security so a user can only write their own like/unlike rows.
 3. In **Project Settings → API**, copy three values:
    - **Project URL** and **anon/public key** → go in the app (`EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`; safe to embed client-side by Supabase's design, since access is enforced by row-level security, not by keeping this secret).
    - **service_role key** → server only (`SUPABASE_SERVICE_ROLE_KEY`), never sent to the app. This key bypasses row-level security, so it must never end up in client code or a committed file.

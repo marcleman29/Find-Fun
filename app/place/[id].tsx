@@ -1,16 +1,46 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 
 import { HeartIcon } from '../../components/icons/HeartIcon';
 import { PressableScale } from '../../components/PressableScale';
 import { useFavorites } from '../../contexts/FavoritesContext';
 import { mockPlaces } from '../../data/mockPlaces';
-import { computeQualityScore } from '../../lib/ranking';
+import { fetchLikeCounts, toggleLike, type LikeInfo } from '../../lib/likes';
+import { rankPlaces } from '../../lib/ranking';
+import type { RankedPlace } from '../../lib/types';
 
 export default function PlaceDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const place = mockPlaces.find((candidate) => candidate.id === id);
+  const { id, place: placeParam } = useLocalSearchParams<{ id: string; place?: string }>();
   const { isFavorite, toggleFavorite } = useFavorites();
+  const [likeInfo, setLikeInfo] = useState<LikeInfo>({ count: 0, likedByMe: false });
+
+  // PlaceCard passes the full place it already has (real SerpApi results or
+  // AI-ranked mock data) via params — looking it up by id in the bundled
+  // mock dataset only worked by coincidence when every place WAS mock data.
+  // Once real places came from search, their SerpApi ids never matched
+  // mockPlaces, so this always resolved to "Place not found."
+  let place: RankedPlace | undefined;
+  if (placeParam) {
+    try {
+      place = JSON.parse(placeParam) as RankedPlace;
+    } catch {
+      place = undefined;
+    }
+  }
+  if (!place) {
+    const fallback = mockPlaces.find((candidate) => candidate.id === id);
+    place = fallback ? rankPlaces([fallback])[0] : undefined;
+  }
+
+  useEffect(() => {
+    if (!place) return;
+    fetchLikeCounts([place.id]).then((likes) => {
+      const info = likes[place!.id];
+      if (info) setLikeInfo(info);
+    });
+  }, [place?.id]);
 
   if (!place) {
     return (
@@ -22,6 +52,14 @@ export default function PlaceDetailScreen() {
 
   const favorite = isFavorite(place.id);
 
+  const handleLike = async () => {
+    // Optimistic update — a failed toggle just means the next fetch
+    // corrects it, not worth blocking the tap on a round trip.
+    setLikeInfo((prev) => ({ count: prev.likedByMe ? prev.count - 1 : prev.count + 1, likedByMe: !prev.likedByMe }));
+    const result = await toggleLike(place!.id);
+    if (result) setLikeInfo(result);
+  };
+
   return (
     <View style={styles.container}>
       <FlatList
@@ -32,7 +70,7 @@ export default function PlaceDetailScreen() {
           <View style={styles.header}>
             <View style={styles.titleRow}>
               <Text style={styles.name}>{place.name}</Text>
-              <PressableScale scaleTo={0.75} hitSlop={12} onPress={() => toggleFavorite(place.id)}>
+              <PressableScale scaleTo={0.75} hitSlop={12} onPress={() => toggleFavorite(place!.id)}>
                 <HeartIcon size={26} filled={favorite} />
               </PressableScale>
             </View>
@@ -41,8 +79,26 @@ export default function PlaceDetailScreen() {
               <Text style={styles.rating}>
                 ★ {place.rating.toFixed(1)} ({place.reviewCount.toLocaleString()} reviews)
               </Text>
-              <Text style={styles.score}>Quality score {computeQualityScore(place)}</Text>
+              <Text style={styles.score}>Quality score {place.qualityScore}</Text>
             </View>
+
+            <PressableScale onPress={handleLike}>
+              <View style={styles.likeButton}>
+                <Ionicons
+                  name={likeInfo.likedByMe ? 'thumbs-up' : 'thumbs-up-outline'}
+                  size={16}
+                  color={likeInfo.likedByMe ? '#0d9488' : '#666'}
+                />
+                <Text style={[styles.likeText, likeInfo.likedByMe && styles.likeTextActive]}>
+                  {likeInfo.count > 0
+                    ? `${likeInfo.count} ${likeInfo.count === 1 ? 'like' : 'likes'}`
+                    : 'Like this place'}
+                </Text>
+              </View>
+            </PressableScale>
+
+            {place.aiHighlight && <Text style={styles.aiHighlight}>✨ {place.aiHighlight}</Text>}
+
             <Text style={styles.reviewsHeading}>Top reviews</Text>
           </View>
         }
@@ -101,6 +157,30 @@ const styles = StyleSheet.create({
   score: {
     fontSize: 14,
     fontWeight: '600',
+    color: '#3949ab',
+  },
+  likeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    marginTop: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+  },
+  likeText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#666',
+  },
+  likeTextActive: {
+    color: '#0d9488',
+  },
+  aiHighlight: {
+    marginTop: 10,
+    fontSize: 14,
     color: '#3949ab',
   },
   reviewsHeading: {
