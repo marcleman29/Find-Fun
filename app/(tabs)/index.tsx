@@ -7,8 +7,18 @@ import { PlaceCard } from '../../components/PlaceCard';
 import { useFavorites } from '../../contexts/FavoritesContext';
 import { mockLocation, mockPlaces } from '../../data/mockPlaces';
 import { getRankedPlaces } from '../../lib/aiRecommendations';
-import { fetchPlaces } from '../../lib/places';
+import { fetchPlaces, type FetchFailureReason } from '../../lib/places';
 import type { PlaceCategory, RankedPlace } from '../../lib/types';
+
+// Surfaced instead of one opaque "unavailable" message so a real cause
+// (expired session, hit the monthly search cap, server error, no
+// connection) is visible instead of guessing.
+const REASON_MESSAGES: Record<FetchFailureReason, string> = {
+  auth: 'Your session expired — sign out and back in to restore live results.',
+  quota: "You've hit this month's search limit — showing sample data instead.",
+  server: 'The server hit an error — showing sample data instead.',
+  network: "Couldn't reach the server — showing sample data instead.",
+};
 
 export default function SearchScreen() {
   const [locationInput, setLocationInput] = useState(mockLocation);
@@ -18,6 +28,7 @@ export default function SearchScreen() {
   const [loading, setLoading] = useState(true);
   const [placesSource, setPlacesSource] = useState<'google' | 'mock'>('mock');
   const [rankingSource, setRankingSource] = useState<'qwen' | 'fallback'>('fallback');
+  const [failureReason, setFailureReason] = useState<FetchFailureReason | null>(null);
   const { isFavorite, toggleFavorite } = useFavorites();
 
   // Places come from the server's Google Places-backed endpoint when it's
@@ -30,14 +41,17 @@ export default function SearchScreen() {
     setLoading(true);
 
     (async () => {
-      const fetchedPlaces = await fetchPlaces(searchedLocation, category);
-      const candidates = fetchedPlaces ?? mockPlaces.filter((place) => place.category === category);
-      const result = await getRankedPlaces(searchedLocation, category, candidates);
+      const placesResult = await fetchPlaces(searchedLocation, category);
+      const candidates = placesResult.places ?? mockPlaces.filter((place) => place.category === category);
+      const rankingResult = await getRankedPlaces(searchedLocation, category, candidates);
 
       if (cancelled) return;
-      setResults(result.ranked);
-      setRankingSource(result.source);
-      setPlacesSource(fetchedPlaces ? 'google' : 'mock');
+      setResults(rankingResult.ranked);
+      setRankingSource(rankingResult.source);
+      setPlacesSource(placesResult.places ? 'google' : 'mock');
+      // Prefer the places failure reason since it happens first in the
+      // pipeline and is more likely the root cause of both fallbacks.
+      setFailureReason(placesResult.reason ?? rankingResult.reason);
       setLoading(false);
     })();
 
@@ -55,11 +69,10 @@ export default function SearchScreen() {
       />
       <Text style={styles.locationLabel}>Showing results for {searchedLocation}</Text>
       <CategoryPills selected={category} onSelect={setCategory} />
-      {!loading && placesSource === 'mock' && (
-        <Text style={styles.fallbackNotice}>Live place search unavailable — showing sample data</Text>
-      )}
-      {!loading && rankingSource === 'fallback' && (
-        <Text style={styles.fallbackNotice}>AI ranking unavailable — showing basic ranking</Text>
+      {!loading && (placesSource === 'mock' || rankingSource === 'fallback') && (
+        <Text style={styles.fallbackNotice}>
+          {failureReason ? REASON_MESSAGES[failureReason] : 'Live search unavailable — showing sample data'}
+        </Text>
       )}
       {loading ? (
         <View style={styles.loading}>
