@@ -67,7 +67,7 @@ export default function UpgradeScreen() {
           ))}
         </View>
 
-        <PressableScale onPress={handleUpgrade} disabled={requesting}>
+        <PressableScale onPress={handleUpgrade} disabled={requesting} style={styles.ctaWrapper}>
           <LinearGradient colors={BRAND_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.ctaButton}>
             <Text style={styles.ctaText}>{requesting ? 'One sec…' : 'Get Plus'}</Text>
           </LinearGradient>
@@ -177,12 +177,14 @@ const styles = StyleSheet.create({
   featureTextMuted: {
     color: '#999',
   },
-  ctaButton: {
+  ctaWrapper: {
     width: '100%',
+    marginTop: 28,
+  },
+  ctaButton: {
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',
-    marginTop: 28,
   },
   ctaText: {
     color: '#fff',
