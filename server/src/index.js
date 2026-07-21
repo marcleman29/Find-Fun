@@ -152,7 +152,7 @@ app.get('/confirmed', (_req, res) => {
       display: flex;
       align-items: center;
       justify-content: center;
-      background: #f7f7fb;
+      background: linear-gradient(135deg, #ff0080, #ff8c00);
       font-family: -apple-system, Roboto, Helvetica, Arial, sans-serif;
     }
     .card {
@@ -160,17 +160,23 @@ app.get('/confirmed', (_req, res) => {
       padding: 32px 28px;
       text-align: center;
     }
-    .check {
-      font-size: 48px;
-      margin-bottom: 12px;
+    .badge {
+      width: 72px;
+      height: 72px;
+      border-radius: 36px;
+      background: rgba(255, 255, 255, 0.18);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 16px;
     }
     h1 {
-      color: #1a1a2e;
+      color: #fff;
       font-size: 22px;
       margin: 0 0 8px;
     }
     p {
-      color: #777;
+      color: rgba(255, 255, 255, 0.85);
       font-size: 15px;
       line-height: 1.5;
       margin: 0;
@@ -179,7 +185,11 @@ app.get('/confirmed', (_req, res) => {
 </head>
 <body>
   <div class="card">
-    <div class="check">✅</div>
+    <div class="badge">
+      <svg width="36" height="36" viewBox="0 0 100 100">
+        <polygon points="50,8 61.31,38.69 92,50 61.31,61.31 50,92 38.69,61.31 8,50 38.69,38.69" fill="#fff" />
+      </svg>
+    </div>
     <h1>Email confirmed</h1>
     <p>Your Find Fun account is verified. Head back to the app and sign in.</p>
   </div>
