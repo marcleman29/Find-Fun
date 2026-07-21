@@ -1,3 +1,4 @@
+import { LinearGradient } from 'expo-linear-gradient';
 import { Link } from 'expo-router';
 import { useState } from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -13,7 +14,7 @@ interface PlaceCardProps {
 
 export function PlaceCard({ place, isFavorite, onToggleFavorite }: PlaceCardProps) {
   const topReview = place.topReviews[0];
-  const { color, emoji } = getCategoryMeta(place.category);
+  const { color, gradient, emoji } = getCategoryMeta(place.category);
   // Real place photos come from SerpApi; mock data and the occasional dead
   // thumbnail link fall back to a colorful category-themed banner instead of
   // a broken image icon.
@@ -31,9 +32,14 @@ export function PlaceCard({ place, isFavorite, onToggleFavorite }: PlaceCardProp
             onError={() => setPhotoFailed(true)}
           />
         ) : (
-          <View style={[styles.photo, styles.photoFallback, { backgroundColor: color }]}>
+          <LinearGradient
+            colors={gradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.photo, styles.photoFallback]}
+          >
             <Text style={styles.photoFallbackEmoji}>{emoji}</Text>
-          </View>
+          </LinearGradient>
         )}
 
         <View style={styles.body}>

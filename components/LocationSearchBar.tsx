@@ -1,3 +1,4 @@
+import { LinearGradient } from 'expo-linear-gradient';
 import { StyleSheet, TextInput, TouchableOpacity, View, Text } from 'react-native';
 
 interface LocationSearchBarProps {
@@ -18,8 +19,15 @@ export function LocationSearchBar({ value, onChangeText, onSubmit }: LocationSea
         placeholderTextColor="#999"
         returnKeyType="search"
       />
-      <TouchableOpacity style={styles.button} onPress={onSubmit}>
-        <Text style={styles.buttonText}>Search</Text>
+      <TouchableOpacity onPress={onSubmit}>
+        <LinearGradient
+          colors={['#1a1a2e', '#3949ab']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.button}
+        >
+          <Text style={styles.buttonText}>🔍 Search</Text>
+        </LinearGradient>
       </TouchableOpacity>
     </View>
   );
@@ -44,8 +52,8 @@ const styles = StyleSheet.create({
   button: {
     justifyContent: 'center',
     paddingHorizontal: 16,
+    paddingVertical: 12,
     borderRadius: 10,
-    backgroundColor: '#1a1a2e',
   },
   buttonText: {
     color: '#fff',
