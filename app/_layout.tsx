@@ -30,7 +30,11 @@ function RootLayoutNav() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(auth)" />
       <Stack.Screen name="(tabs)" />
-      <Stack.Screen name="place/[id]" options={{ headerShown: true, title: '' }} />
+      <Stack.Screen
+        name="place/[id]"
+        options={{ headerShown: true, title: '', presentation: 'modal', animation: 'slide_from_bottom' }}
+      />
+      <Stack.Screen name="upgrade" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
     </Stack>
   );
 }

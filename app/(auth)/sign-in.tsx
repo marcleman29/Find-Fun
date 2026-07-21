@@ -14,6 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { SparkMark } from '../../components/icons/SparkMark';
+import { PressableScale } from '../../components/PressableScale';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 
@@ -175,7 +176,7 @@ export default function SignInScreen() {
 
               {error && <Text style={styles.error}>{error}</Text>}
 
-              <TouchableOpacity onPress={handleSubmit} disabled={submitting}>
+              <PressableScale onPress={handleSubmit} disabled={submitting}>
                 <LinearGradient
                   colors={theme.gradient}
                   start={{ x: 0, y: 0 }}
@@ -188,7 +189,7 @@ export default function SignInScreen() {
                     <Text style={styles.buttonText}>{mode === 'signIn' ? 'Sign In' : 'Create Account'}</Text>
                   )}
                 </LinearGradient>
-              </TouchableOpacity>
+              </PressableScale>
 
               <TouchableOpacity onPress={switchMode}>
                 <Text style={[styles.toggleText, { color: theme.accent }]}>
