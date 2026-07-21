@@ -1,8 +1,12 @@
+import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ScrollView, StyleSheet, Text, TouchableOpacity } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { CATEGORIES } from '../lib/categories';
 import type { PlaceCategory } from '../lib/types';
+import { PressableScale } from './PressableScale';
+
+type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
 interface CategoryPillsProps {
   selected: PlaceCategory;
@@ -16,10 +20,10 @@ export function CategoryPills({ selected, onSelect }: CategoryPillsProps) {
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.container}
     >
-      {CATEGORIES.map(({ key, label, gradient }) => {
+      {CATEGORIES.map(({ key, label, gradient, color, icon }) => {
         const isSelected = key === selected;
         return (
-          <TouchableOpacity key={key} onPress={() => onSelect(key)}>
+          <PressableScale key={key} onPress={() => onSelect(key)}>
             {isSelected ? (
               <LinearGradient
                 colors={gradient}
@@ -27,12 +31,16 @@ export function CategoryPills({ selected, onSelect }: CategoryPillsProps) {
                 end={{ x: 1, y: 0 }}
                 style={styles.pill}
               >
+                <Ionicons name={icon as IoniconName} size={15} color="#fff" />
                 <Text style={[styles.pillText, styles.pillTextSelected]}>{label}</Text>
               </LinearGradient>
             ) : (
-              <Text style={[styles.pill, styles.pillText]}>{label}</Text>
+              <View style={styles.pill}>
+                <Ionicons name={`${icon}-outline` as IoniconName} size={15} color={color} />
+                <Text style={styles.pillText}>{label}</Text>
+              </View>
             )}
-          </TouchableOpacity>
+          </PressableScale>
         );
       })}
     </ScrollView>
@@ -46,6 +54,9 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,

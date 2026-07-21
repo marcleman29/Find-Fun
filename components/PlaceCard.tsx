@@ -1,12 +1,13 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { Link } from 'expo-router';
 import { useState } from 'react';
-import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native';
 
 import { getCategoryMeta } from '../lib/categories';
 import type { RankedPlace } from '../lib/types';
 import { HeartIcon } from './icons/HeartIcon';
 import { SparkMark } from './icons/SparkMark';
+import { PressableScale } from './PressableScale';
 
 interface PlaceCardProps {
   place: RankedPlace;
@@ -25,7 +26,7 @@ export function PlaceCard({ place, isFavorite, onToggleFavorite }: PlaceCardProp
 
   return (
     <Link href={{ pathname: '/place/[id]', params: { id: place.id } }} asChild>
-      <TouchableOpacity style={styles.card}>
+      <PressableScale scaleTo={0.98} style={styles.card}>
         {showPhoto ? (
           <Image
             source={{ uri: place.photoUrl }}
@@ -50,13 +51,14 @@ export function PlaceCard({ place, isFavorite, onToggleFavorite }: PlaceCardProp
               <Text style={styles.name}>{place.name}</Text>
               <Text style={styles.address}>{place.address}</Text>
             </View>
-            <TouchableOpacity
+            <PressableScale
+              scaleTo={0.75}
               hitSlop={12}
               onPress={() => onToggleFavorite(place.id)}
               style={styles.favoriteButton}
             >
               <HeartIcon size={22} filled={isFavorite} />
-            </TouchableOpacity>
+            </PressableScale>
           </View>
 
           <View style={styles.metaRow}>
@@ -79,7 +81,7 @@ export function PlaceCard({ place, isFavorite, onToggleFavorite }: PlaceCardProp
             topReview && <Text style={styles.reviewSnippet}>"{topReview.text}"</Text>
           )}
         </View>
-      </TouchableOpacity>
+      </PressableScale>
     </Link>
   );
 }
