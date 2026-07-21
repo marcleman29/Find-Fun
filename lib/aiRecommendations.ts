@@ -1,3 +1,4 @@
+import type { FetchFailureReason } from './places';
 import { rankPlaces } from './ranking';
 import { supabase } from './supabase';
 import type { Place, PlaceCategory, RankedPlace } from './types';
@@ -17,19 +18,31 @@ interface QwenRecommendation {
 export interface RankingResult {
   ranked: RankedPlace[];
   source: 'qwen' | 'fallback';
+  reason: FetchFailureReason | null;
+}
+
+function reasonForStatus(status: number): FetchFailureReason {
+  if (status === 401) return 'auth';
+  if (status === 429) return 'quota';
+  if (status >= 500) return 'server';
+  return 'network';
 }
 
 /**
  * Ranks places using the Qwen-backed /api/recommendations endpoint, which
  * scores genuine review signal rather than raw star average. Falls back to
  * the local heuristic in ranking.ts if the server or model is unavailable,
- * so the app stays usable without a Qwen API key configured.
+ * so the app stays usable without a Qwen API key configured. The reason is
+ * carried through even on fallback so the UI can say *why* instead of a
+ * single opaque "unavailable".
  */
 export async function getRankedPlaces(
   location: string,
   category: PlaceCategory,
   places: Place[]
 ): Promise<RankingResult> {
+  let reason: FetchFailureReason = 'network';
+
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -48,6 +61,7 @@ export async function getRankedPlaces(
     }).finally(() => clearTimeout(timeout));
 
     if (!response.ok) {
+      reason = reasonForStatus(response.status);
       throw new Error(`Recommendations request failed with status ${response.status}`);
     }
 
@@ -67,8 +81,8 @@ export async function getRankedPlaces(
       throw new Error('Qwen returned no usable recommendations');
     }
 
-    return { ranked, source: 'qwen' };
+    return { ranked, source: 'qwen', reason: null };
   } catch {
-    return { ranked: rankPlaces(places), source: 'fallback' };
+    return { ranked: rankPlaces(places), source: 'fallback', reason };
   }
 }
