@@ -1,7 +1,9 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useMemo } from 'react';
-import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { FlatList, StyleSheet, Text, View } from 'react-native';
 
 import { PlaceCard } from '../../components/PlaceCard';
+import { PressableScale } from '../../components/PressableScale';
 import { useAuth } from '../../contexts/AuthContext';
 import { useFavorites } from '../../contexts/FavoritesContext';
 import { mockPlaces } from '../../data/mockPlaces';
@@ -18,10 +20,15 @@ export default function SavedScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.accountRow}>
-        <Text style={styles.accountEmail}>{session?.user.email}</Text>
-        <TouchableOpacity onPress={signOut}>
-          <Text style={styles.signOut}>Sign out</Text>
-        </TouchableOpacity>
+        <Text style={styles.accountEmail} numberOfLines={1}>
+          {session?.user.email}
+        </Text>
+        <PressableScale onPress={signOut}>
+          <View style={styles.signOutButton}>
+            <Ionicons name="log-out-outline" size={16} color="#c0392b" />
+            <Text style={styles.signOut}>Sign out</Text>
+          </View>
+        </PressableScale>
       </View>
       <FlatList
         data={savedPlaces}
@@ -49,11 +56,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingTop: 12,
+    gap: 12,
   },
   accountEmail: {
     fontSize: 13,
     color: '#777',
     flexShrink: 1,
+  },
+  signOutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: '#fdecea',
   },
   signOut: {
     fontSize: 13,
