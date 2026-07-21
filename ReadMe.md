@@ -6,7 +6,7 @@ A mobile app that aggregates Google reviews for any location and surfaces the be
 Type in a location → get curated, high-signal recommendations pulled from Google review data, ranked by genuine quality rather than raw review count.
 
 ## Features (planned)
-- Location search (city, neighborhood, or address)
+- Location search (city, neighborhood, or address) — or "Use my current location" for what's good nearby right now
 - Categorized results: Things to Do / Places to Visit / Places to Eat
 - Smart ranking beyond simple star average (review recency, review depth, keyword sentiment)
 - Review snippet highlights per place
@@ -29,6 +29,7 @@ Type in a location → get curated, high-signal recommendations pulled from Goog
 - [x] Design UI for search + results
 - [x] Category filtering (food / activities / attractions)
 - [x] User accounts (Supabase auth) + per-user monthly search quotas, ahead of subscription tiering
+- [x] "Near me" search using device GPS (biases SerpApi results to your exact location instead of a resolved city name)
 
 ## Project Structure
 - `app/` — expo-router screens: `(auth)/sign-in.tsx` (login/signup, shown when logged out), `(tabs)/index.tsx` (search + results), `(tabs)/saved.tsx` (favorites + sign out), `place/[id].tsx` (place detail)

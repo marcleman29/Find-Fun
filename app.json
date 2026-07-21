@@ -7,7 +7,15 @@
     "icon": "./assets/icon.png",
     "scheme": "findfun",
     "userInterfaceStyle": "light",
-    "plugins": ["expo-router"],
+    "plugins": [
+      "expo-router",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Find Fun uses your location to show great places near you right now."
+        }
+      ]
+    ],
     "ios": {
       "supportsTablet": true
     },

@@ -19,10 +19,17 @@ function candidateScore(candidate) {
   return rating * Math.log10(count + 1);
 }
 
-async function searchMaps(apiKey, query) {
+async function searchMaps(apiKey, query, coords) {
   const url = new URL(SERPAPI_BASE_URL);
   url.searchParams.set('engine', 'google_maps');
   url.searchParams.set('q', query);
+  if (coords) {
+    // SerpApi's google_maps engine biases/anchors results to this point when
+    // `ll` is set — used for "near me" search instead of resolving a typed
+    // city name, so results are the closest, not just whatever's in the
+    // named location.
+    url.searchParams.set('ll', `@${coords.lat},${coords.lng},14z`);
+  }
   url.searchParams.set('api_key', apiKey);
 
   const response = await fetch(url);
@@ -51,9 +58,11 @@ async function fetchReviews(apiKey, dataId) {
   return data.reviews ?? [];
 }
 
-export async function fetchPlaces(apiKey, location, category) {
-  const query = `${CATEGORY_QUERIES[category]} in ${location}`;
-  const candidates = await searchMaps(apiKey, query);
+export async function fetchPlaces(apiKey, location, category, coords) {
+  // With coords, `ll` already anchors the search geographically — appending
+  // "in {location}" would fight that with a (often approximate) place name.
+  const query = coords ? CATEGORY_QUERIES[category] : `${CATEGORY_QUERIES[category]} in ${location}`;
+  const candidates = await searchMaps(apiKey, query, coords);
 
   const topCandidates = candidates
     .filter((candidate) => candidate.data_id && candidate.title)

@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, LayoutAnimation, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, ActivityIndicator, FlatList, LayoutAnimation, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { CategoryPills } from '../../components/CategoryPills';
 import { LocationSearchBar } from '../../components/LocationSearchBar';
@@ -10,6 +10,7 @@ import { PlaceCard } from '../../components/PlaceCard';
 import { useFavorites } from '../../contexts/FavoritesContext';
 import { mockLocation, mockPlaces } from '../../data/mockPlaces';
 import { getRankedPlaces } from '../../lib/aiRecommendations';
+import { getCurrentLocation } from '../../lib/location';
 import { fetchPlaces, type FetchFailureReason } from '../../lib/places';
 import type { PlaceCategory, RankedPlace } from '../../lib/types';
 
@@ -34,6 +35,8 @@ export default function SearchScreen() {
   const [placesSource, setPlacesSource] = useState<'google' | 'mock'>('mock');
   const [rankingSource, setRankingSource] = useState<'qwen' | 'fallback'>('fallback');
   const [failureReason, setFailureReason] = useState<FetchFailureReason | null>(null);
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [locating, setLocating] = useState(false);
   const { isFavorite, toggleFavorite } = useFavorites();
   const lastReasonRef = useRef<FetchFailureReason | null>(null);
 
@@ -47,7 +50,7 @@ export default function SearchScreen() {
     setLoading(true);
 
     (async () => {
-      const placesResult = await fetchPlaces(searchedLocation, category);
+      const placesResult = await fetchPlaces(searchedLocation, category, coords ?? undefined);
       const candidates = placesResult.places ?? mockPlaces.filter((place) => place.category === category);
       const rankingResult = await getRankedPlaces(searchedLocation, category, candidates);
 
@@ -65,7 +68,7 @@ export default function SearchScreen() {
     return () => {
       cancelled = true;
     };
-  }, [category, searchedLocation]);
+  }, [category, searchedLocation, coords]);
 
   // Hitting the free cap is the single best moment to offer an upgrade —
   // the user just directly felt the limit. Fires once per new occurrence,
@@ -82,14 +85,44 @@ export default function SearchScreen() {
     setCategory(next);
   };
 
+  // A typed search always means "this named place," not "exactly where I'm
+  // standing" — drop any coords from a previous near-me search so it doesn't
+  // silently keep biasing results to the old GPS point.
+  const submitTextSearch = () => {
+    setCoords(null);
+    setSearchedLocation(locationInput);
+  };
+
+  const useCurrentLocation = async () => {
+    setLocating(true);
+    const resolved = await getCurrentLocation();
+    setLocating(false);
+
+    if (!resolved) {
+      Alert.alert(
+        'Location unavailable',
+        'Enable location access for Find Fun in your device settings to search near you, or type a city instead.'
+      );
+      return;
+    }
+
+    setCoords(resolved.coords);
+    setLocationInput(resolved.label);
+    setSearchedLocation(resolved.label);
+  };
+
   return (
     <View style={styles.container}>
       <LocationSearchBar
         value={locationInput}
         onChangeText={setLocationInput}
-        onSubmit={() => setSearchedLocation(locationInput)}
+        onSubmit={submitTextSearch}
+        onUseCurrentLocation={useCurrentLocation}
+        locating={locating}
       />
-      <Text style={styles.locationLabel}>Showing results for {searchedLocation}</Text>
+      <Text style={styles.locationLabel}>
+        {coords ? 'Showing results near' : 'Showing results for'} {searchedLocation}
+      </Text>
       <CategoryPills selected={category} onSelect={selectCategory} />
 
       <TouchableOpacity onPress={() => router.push('/upgrade')} activeOpacity={0.85}>
