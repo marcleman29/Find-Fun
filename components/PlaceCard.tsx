@@ -5,6 +5,8 @@ import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { getCategoryMeta } from '../lib/categories';
 import type { RankedPlace } from '../lib/types';
+import { HeartIcon } from './icons/HeartIcon';
+import { SparkMark } from './icons/SparkMark';
 
 interface PlaceCardProps {
   place: RankedPlace;
@@ -14,7 +16,7 @@ interface PlaceCardProps {
 
 export function PlaceCard({ place, isFavorite, onToggleFavorite }: PlaceCardProps) {
   const topReview = place.topReviews[0];
-  const { color, gradient, emoji } = getCategoryMeta(place.category);
+  const { color, gradient } = getCategoryMeta(place.category);
   // Real place photos come from SerpApi; mock data and the occasional dead
   // thumbnail link fall back to a colorful category-themed banner instead of
   // a broken image icon.
@@ -38,7 +40,7 @@ export function PlaceCard({ place, isFavorite, onToggleFavorite }: PlaceCardProp
             end={{ x: 1, y: 1 }}
             style={[styles.photo, styles.photoFallback]}
           >
-            <Text style={styles.photoFallbackEmoji}>{emoji}</Text>
+            <SparkMark size={40} color="#fff" />
           </LinearGradient>
         )}
 
@@ -53,7 +55,7 @@ export function PlaceCard({ place, isFavorite, onToggleFavorite }: PlaceCardProp
               onPress={() => onToggleFavorite(place.id)}
               style={styles.favoriteButton}
             >
-              <Text style={styles.favoriteIcon}>{isFavorite ? '♥' : '♡'}</Text>
+              <HeartIcon size={22} filled={isFavorite} />
             </TouchableOpacity>
           </View>
 
@@ -69,7 +71,10 @@ export function PlaceCard({ place, isFavorite, onToggleFavorite }: PlaceCardProp
           </View>
 
           {place.aiHighlight ? (
-            <Text style={[styles.aiHighlight, { color }]}>✨ {place.aiHighlight}</Text>
+            <View style={styles.aiHighlightRow}>
+              <SparkMark size={13} color={color} />
+              <Text style={[styles.aiHighlight, { color }]}>{place.aiHighlight}</Text>
+            </View>
           ) : (
             topReview && <Text style={styles.reviewSnippet}>"{topReview.text}"</Text>
           )}
@@ -100,9 +105,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  photoFallbackEmoji: {
-    fontSize: 40,
-  },
   body: {
     padding: 16,
   },
@@ -126,10 +128,6 @@ const styles = StyleSheet.create({
   },
   favoriteButton: {
     padding: 4,
-  },
-  favoriteIcon: {
-    fontSize: 22,
-    color: '#e0245e',
   },
   metaRow: {
     flexDirection: 'row',
@@ -159,9 +157,14 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     color: '#555',
   },
-  aiHighlight: {
+  aiHighlightRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
     marginTop: 10,
+  },
+  aiHighlight: {
+    flex: 1,
     fontSize: 14,
-    color: '#3949ab',
   },
 });

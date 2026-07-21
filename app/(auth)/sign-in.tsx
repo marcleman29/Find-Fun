@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { SparkMark } from '../../components/icons/SparkMark';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 
@@ -29,14 +30,12 @@ const MODE_THEME = {
   signIn: {
     accent: '#1a1a2e',
     gradient: ['#1a1a2e', '#3949ab'] as [string, string],
-    emoji: '🔑',
     headline: 'Welcome back',
     subtitle: 'Sign in to continue',
   },
   signUp: {
     accent: '#0d9488',
     gradient: ['#0d9488', '#22d3ee'] as [string, string],
-    emoji: '✨',
     headline: 'Join Find Fun',
     subtitle: 'Create an account to get personalized picks',
   },
@@ -113,7 +112,9 @@ export default function SignInScreen() {
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
         <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-            <Text style={styles.emoji}>{theme.emoji}</Text>
+            <View style={styles.badge}>
+              <SparkMark size={32} gradient={theme.gradient} />
+            </View>
             <Text style={styles.title}>{theme.headline}</Text>
             <Text style={styles.subtitle}>{theme.subtitle}</Text>
 
@@ -218,9 +219,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingVertical: 24,
   },
-  emoji: {
-    fontSize: 44,
-    textAlign: 'center',
+  badge: {
+    alignSelf: 'center',
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
     fontSize: 30,

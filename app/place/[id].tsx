@@ -1,6 +1,7 @@
 import { useLocalSearchParams } from 'expo-router';
 import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
+import { HeartIcon } from '../../components/icons/HeartIcon';
 import { useFavorites } from '../../contexts/FavoritesContext';
 import { mockPlaces } from '../../data/mockPlaces';
 import { computeQualityScore } from '../../lib/ranking';
@@ -31,7 +32,7 @@ export default function PlaceDetailScreen() {
             <View style={styles.titleRow}>
               <Text style={styles.name}>{place.name}</Text>
               <TouchableOpacity hitSlop={12} onPress={() => toggleFavorite(place.id)}>
-                <Text style={styles.favoriteIcon}>{favorite ? '♥' : '♡'}</Text>
+                <HeartIcon size={26} filled={favorite} />
               </TouchableOpacity>
             </View>
             <Text style={styles.address}>{place.address}</Text>
@@ -80,10 +81,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#1a1a2e',
     flex: 1,
-  },
-  favoriteIcon: {
-    fontSize: 26,
-    color: '#e0245e',
   },
   address: {
     fontSize: 14,

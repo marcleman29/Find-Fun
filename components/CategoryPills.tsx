@@ -16,7 +16,7 @@ export function CategoryPills({ selected, onSelect }: CategoryPillsProps) {
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.container}
     >
-      {CATEGORIES.map(({ key, label, gradient, emoji }) => {
+      {CATEGORIES.map(({ key, label, gradient }) => {
         const isSelected = key === selected;
         return (
           <TouchableOpacity key={key} onPress={() => onSelect(key)}>
@@ -27,14 +27,10 @@ export function CategoryPills({ selected, onSelect }: CategoryPillsProps) {
                 end={{ x: 1, y: 0 }}
                 style={styles.pill}
               >
-                <Text style={[styles.pillText, styles.pillTextSelected]}>
-                  {emoji} {label}
-                </Text>
+                <Text style={[styles.pillText, styles.pillTextSelected]}>{label}</Text>
               </LinearGradient>
             ) : (
-              <Text style={[styles.pill, styles.pillText]}>
-                {emoji} {label}
-              </Text>
+              <Text style={[styles.pill, styles.pillText]}>{label}</Text>
             )}
           </TouchableOpacity>
         );
