@@ -27,8 +27,14 @@ function reasonForStatus(status: number): FetchFailureReason {
  * Never throws — returns a reason (auth/quota/server/network) alongside a
  * null places list on failure, so callers can fall back to mock data while
  * still telling the user *why* instead of a single opaque "unavailable".
+ * When coords are given (near-me search), the server biases results around
+ * that exact point instead of resolving `location` as free text.
  */
-export async function fetchPlaces(location: string, category: PlaceCategory): Promise<FetchPlacesResult> {
+export async function fetchPlaces(
+  location: string,
+  category: PlaceCategory,
+  coords?: { lat: number; lng: number }
+): Promise<FetchPlacesResult> {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -37,6 +43,10 @@ export async function fetchPlaces(location: string, category: PlaceCategory): Pr
       data: { session },
     } = await supabase.auth.getSession();
     const params = new URLSearchParams({ location, category });
+    if (coords) {
+      params.set('lat', String(coords.lat));
+      params.set('lng', String(coords.lng));
+    }
     const response = await fetch(`${API_BASE_URL}/api/places?${params.toString()}`, {
       signal: controller.signal,
       headers: session ? { Authorization: `Bearer ${session.access_token}` } : undefined,

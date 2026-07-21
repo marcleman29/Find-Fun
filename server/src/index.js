@@ -207,11 +207,22 @@ app.get('/health', (_req, res) => {
 });
 
 app.get('/api/places', paidApiLimiter, requireAuth(), enforceQuota(), async (req, res) => {
-  const { location, category } = req.query;
+  const { location, category, lat, lng } = req.query;
 
   if (typeof location !== 'string' || !location.trim() || !Object.hasOwn(CATEGORY_QUERIES, category ?? '')) {
     res.status(400).json({ error: 'location (non-empty string) and a valid category are required' });
     return;
+  }
+
+  let coords;
+  if (lat !== undefined || lng !== undefined) {
+    const parsedLat = Number(lat);
+    const parsedLng = Number(lng);
+    if (!Number.isFinite(parsedLat) || !Number.isFinite(parsedLng)) {
+      res.status(400).json({ error: 'lat and lng must both be valid numbers when provided' });
+      return;
+    }
+    coords = { lat: parsedLat, lng: parsedLng };
   }
 
   if (!SERPAPI_KEY) {
@@ -219,7 +230,10 @@ app.get('/api/places', paidApiLimiter, requireAuth(), enforceQuota(), async (req
     return;
   }
 
-  const key = `${location.toLowerCase()}::${category}`;
+  // Round coords for the cache key so nearby repeat requests (a few meters
+  // of GPS drift) still hit cache instead of fragmenting it per-coordinate.
+  const locationKey = coords ? `${coords.lat.toFixed(2)},${coords.lng.toFixed(2)}` : location.toLowerCase();
+  const key = `${locationKey}::${category}`;
   const cached = placesCache.get(key);
   if (cached && cached.expires > Date.now()) {
     res.json({ source: 'google', places: cached.places });
@@ -227,7 +241,7 @@ app.get('/api/places', paidApiLimiter, requireAuth(), enforceQuota(), async (req
   }
 
   try {
-    const places = await fetchPlaces(SERPAPI_KEY, location, category);
+    const places = await fetchPlaces(SERPAPI_KEY, location, category, coords);
     placesCache.set(key, { places, expires: Date.now() + PLACES_CACHE_TTL_MS });
     res.json({ source: 'google', places });
   } catch (error) {
