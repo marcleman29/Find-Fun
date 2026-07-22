@@ -61,7 +61,12 @@ export function enforceQuota() {
 
       if (createError || !created) {
         console.error('Could not load or create profile:', profileError, createError);
-        res.status(500).json({ error: 'Could not load account' });
+        // Postgrest/Postgres error messages describe schema/query problems
+        // (missing table, permission denied, bad constraint) — never
+        // secrets — safe to surface directly instead of asking for
+        // Render's dashboard logs.
+        const detail = createError?.message ?? profileError?.message ?? 'unknown error';
+        res.status(500).json({ error: `Could not load account: ${detail}` });
         return;
       }
       profile = created;
@@ -74,7 +79,8 @@ export function enforceQuota() {
     });
 
     if (usageError) {
-      res.status(500).json({ error: 'Could not record usage' });
+      console.error('Could not record usage:', usageError);
+      res.status(500).json({ error: `Could not record usage: ${usageError.message}` });
       return;
     }
 
