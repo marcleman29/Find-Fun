@@ -23,13 +23,29 @@ const BRAND_GRADIENT: [string, string] = ['#ff0080', '#ff8c00'];
 
 // Surfaced instead of one opaque "unavailable" message so a real cause
 // (expired session, hit the monthly search cap, server error, no
-// connection) is visible instead of guessing.
+// connection) is visible instead of guessing. Only used when there are no
+// real places at all — a places failure and a ranking failure are shown
+// with different wording (see rankingReasonMessage below) since "AI
+// ranking timed out on real results" and "no real results at all" are very
+// different situations and conflating them into one "sample data" message
+// is actively misleading.
 const REASON_MESSAGES: Record<FetchFailureReason, string> = {
   auth: 'Your session expired — sign out and back in to restore live results.',
   quota: "You've hit this month's search limit.",
   server: 'The server hit an error — showing sample data instead.',
   network: "Couldn't reach the server — showing sample data instead.",
 };
+
+function rankingReasonMessage(reason: FetchFailureReason | null): string {
+  switch (reason) {
+    case 'quota':
+      return "AI ranking hit this month's search limit — showing these real results with basic ranking.";
+    case 'auth':
+      return 'Your session expired, so AI ranking was skipped — showing these real results with basic ranking.';
+    default:
+      return 'AI ranking unavailable right now — showing these real results with basic ranking.';
+  }
+}
 
 export default function SearchScreen() {
   const [locationInput, setLocationInput] = useState(mockLocation);
@@ -39,8 +55,10 @@ export default function SearchScreen() {
   const [loading, setLoading] = useState(true);
   const [placesSource, setPlacesSource] = useState<'google' | 'mock'>('mock');
   const [rankingSource, setRankingSource] = useState<'qwen' | 'fallback'>('fallback');
-  const [failureReason, setFailureReason] = useState<FetchFailureReason | null>(null);
-  const [failureDetail, setFailureDetail] = useState<string | null>(null);
+  const [placesFailureReason, setPlacesFailureReason] = useState<FetchFailureReason | null>(null);
+  const [placesFailureDetail, setPlacesFailureDetail] = useState<string | null>(null);
+  const [rankingFailureReason, setRankingFailureReason] = useState<FetchFailureReason | null>(null);
+  const [rankingFailureDetail, setRankingFailureDetail] = useState<string | null>(null);
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [locating, setLocating] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>('top');
@@ -75,8 +93,10 @@ export default function SearchScreen() {
       setResults(rankPlaces(candidates));
       setRankingSource('fallback');
       setPlacesSource(placesResult.places ? 'google' : 'mock');
-      setFailureReason(placesResult.reason);
-      setFailureDetail(placesResult.detail);
+      setPlacesFailureReason(placesResult.reason);
+      setPlacesFailureDetail(placesResult.detail);
+      setRankingFailureReason(null);
+      setRankingFailureDetail(null);
       setLoading(false);
       setRefiningRanking(true);
 
@@ -86,10 +106,8 @@ export default function SearchScreen() {
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setResults(rankingResult.ranked);
       setRankingSource(rankingResult.source);
-      // Prefer the places failure reason since it happens first in the
-      // pipeline and is more likely the root cause of both fallbacks.
-      setFailureReason(placesResult.reason ?? rankingResult.reason);
-      setFailureDetail(placesResult.detail ?? rankingResult.detail);
+      setRankingFailureReason(rankingResult.reason);
+      setRankingFailureDetail(rankingResult.detail);
       setRefiningRanking(false);
     })();
 
@@ -118,13 +136,15 @@ export default function SearchScreen() {
 
   // Hitting the free cap is the single best moment to offer an upgrade —
   // the user just directly felt the limit. Fires once per new occurrence,
-  // not on every re-render while it stays 'quota'.
+  // not on every re-render while it stays 'quota'. Either endpoint can hit
+  // the cap (places and recommendations each count against it separately).
+  const activeReason = placesFailureReason ?? rankingFailureReason;
   useEffect(() => {
-    if (failureReason === 'quota' && lastReasonRef.current !== 'quota') {
+    if (activeReason === 'quota' && lastReasonRef.current !== 'quota') {
       router.push('/upgrade');
     }
-    lastReasonRef.current = failureReason;
-  }, [failureReason]);
+    lastReasonRef.current = activeReason;
+  }, [activeReason]);
 
   const selectCategory = (next: PlaceCategory) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -205,10 +225,16 @@ export default function SearchScreen() {
           <Text style={styles.refiningText}>Refining with AI…</Text>
         </View>
       )}
-      {!loading && !refiningRanking && (placesSource === 'mock' || rankingSource === 'fallback') && (
+      {!loading && !refiningRanking && placesSource === 'mock' && (
         <Text style={styles.fallbackNotice}>
-          {failureReason ? REASON_MESSAGES[failureReason] : 'Live search unavailable — showing sample data'}
-          {failureDetail ? ` (${failureDetail})` : ''}
+          {placesFailureReason ? REASON_MESSAGES[placesFailureReason] : 'Live search unavailable — showing sample data'}
+          {placesFailureDetail ? ` (${placesFailureDetail})` : ''}
+        </Text>
+      )}
+      {!loading && !refiningRanking && placesSource === 'google' && rankingSource === 'fallback' && (
+        <Text style={styles.fallbackNotice}>
+          {rankingReasonMessage(rankingFailureReason)}
+          {rankingFailureDetail ? ` (${rankingFailureDetail})` : ''}
         </Text>
       )}
       {loading ? (
