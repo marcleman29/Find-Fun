@@ -42,15 +42,29 @@ export function requireAuth() {
 
 export function enforceQuota() {
   return async (req, res, next) => {
-    const { data: profile, error: profileError } = await supabaseAdmin
+    let { data: profile, error: profileError } = await supabaseAdmin
       .from('profiles')
       .select('tier')
       .eq('id', req.userId)
       .single();
 
     if (profileError || !profile) {
-      res.status(500).json({ error: 'Could not load account' });
-      return;
+      // The on_auth_user_created trigger should create this row at signup,
+      // but any account that predates that trigger (or any other gap) would
+      // otherwise be hard-blocked here on every request, forever. Self-heal
+      // by creating a default 'free' profile instead of failing.
+      const { data: created, error: createError } = await supabaseAdmin
+        .from('profiles')
+        .upsert({ id: req.userId, tier: 'free' }, { onConflict: 'id' })
+        .select('tier')
+        .single();
+
+      if (createError || !created) {
+        console.error('Could not load or create profile:', profileError, createError);
+        res.status(500).json({ error: 'Could not load account' });
+        return;
+      }
+      profile = created;
     }
 
     const limit = TIER_LIMITS[profile.tier] ?? TIER_LIMITS.free;
