@@ -10,7 +10,7 @@ export const supabaseAdmin =
 // Monthly search allowance per subscription tier. 'paid' is a placeholder
 // until subscription billing (RevenueCat) exists — for now it's set manually
 // per user in the profiles table for testing.
-const TIER_LIMITS = {
+export const TIER_LIMITS = {
   free: 30,
   paid: 1000,
 };

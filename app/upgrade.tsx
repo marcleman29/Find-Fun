@@ -1,18 +1,34 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
-import { useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { SparkMark } from '../components/icons/SparkMark';
 import { PressableScale } from '../components/PressableScale';
+import { fetchAccount, type Account } from '../lib/account';
 import { FREE_MONTHLY_SEARCHES, PLUS_COMING_SOON, PLUS_FEATURES, PLUS_MONTHLY_SEARCHES } from '../lib/tiers';
 
 const BRAND_GRADIENT: [string, string] = ['#ff0080', '#ff8c00'];
 
 export default function UpgradeScreen() {
   const [requesting, setRequesting] = useState(false);
+  const [account, setAccount] = useState<Account | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      fetchAccount().then((result) => {
+        if (!cancelled) setAccount(result);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }, [])
+  );
+
+  const isPlus = account?.tier === 'paid';
 
   const handleUpgrade = () => {
     // Real billing (RevenueCat / Play Billing) isn't wired up yet — this is
@@ -36,16 +52,33 @@ export default function UpgradeScreen() {
           <SparkMark size={36} gradient={BRAND_GRADIENT} />
         </View>
         <Text style={styles.title}>Find Fun Plus</Text>
-        <Text style={styles.subtitle}>Search more, hit fewer limits, back what's next.</Text>
+        <Text style={styles.subtitle}>
+          {isPlus ? "You're on Plus — thanks for backing Find Fun." : 'Search more, hit fewer limits, back what\'s next.'}
+        </Text>
 
         <View style={styles.tierRow}>
-          <View style={styles.tierCard}>
+          <View style={[styles.tierCard, !isPlus && account && styles.tierCardCurrent]}>
+            {!isPlus && account && (
+              <View style={styles.currentTag}>
+                <Text style={styles.currentTagText}>Current plan</Text>
+              </View>
+            )}
             <Text style={styles.tierName}>Free</Text>
             <Text style={styles.tierPrice}>$0</Text>
             <Text style={styles.tierDetail}>{FREE_MONTHLY_SEARCHES} searches / month</Text>
           </View>
 
-          <LinearGradient colors={BRAND_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.tierCard}>
+          <LinearGradient
+            colors={BRAND_GRADIENT}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.tierCard, isPlus && styles.tierCardCurrent]}
+          >
+            {isPlus && (
+              <View style={styles.currentTagLight}>
+                <Text style={styles.currentTagTextLight}>Current plan</Text>
+              </View>
+            )}
             <Text style={styles.tierNameLight}>Plus</Text>
             <Text style={styles.tierPriceLight}>$4.99/mo</Text>
             <Text style={styles.tierDetailLight}>{PLUS_MONTHLY_SEARCHES.toLocaleString()} searches / month</Text>
@@ -55,7 +88,7 @@ export default function UpgradeScreen() {
         <View style={styles.featureList}>
           {PLUS_FEATURES.map((feature) => (
             <View key={feature} style={styles.featureRow}>
-              <Ionicons name="checkmark-circle" size={20} color="#0d9488" />
+              <Ionicons name="checkmark-circle" size={20} color={isPlus ? '#0d9488' : '#0d9488'} />
               <Text style={styles.featureText}>{feature}</Text>
             </View>
           ))}
@@ -67,15 +100,24 @@ export default function UpgradeScreen() {
           ))}
         </View>
 
-        <PressableScale onPress={handleUpgrade} disabled={requesting} style={styles.ctaWrapper}>
-          <LinearGradient colors={BRAND_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.ctaButton}>
-            <Text style={styles.ctaText}>{requesting ? 'One sec…' : 'Get Plus'}</Text>
-          </LinearGradient>
-        </PressableScale>
+        {isPlus ? (
+          <View style={styles.activeBadge}>
+            <Ionicons name="checkmark-circle" size={20} color="#0d9488" />
+            <Text style={styles.activeBadgeText}>Plus is active on your account</Text>
+          </View>
+        ) : (
+          <>
+            <PressableScale onPress={handleUpgrade} disabled={requesting} style={styles.ctaWrapper}>
+              <LinearGradient colors={BRAND_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.ctaButton}>
+                <Text style={styles.ctaText}>{requesting ? 'One sec…' : 'Get Plus'}</Text>
+              </LinearGradient>
+            </PressableScale>
 
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text style={styles.maybeLater}>Maybe later</Text>
-        </TouchableOpacity>
+            <TouchableOpacity onPress={() => router.back()}>
+              <Text style={styles.maybeLater}>Maybe later</Text>
+            </TouchableOpacity>
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -126,6 +168,36 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     backgroundColor: '#f7f7fb',
+  },
+  tierCardCurrent: {
+    borderWidth: 2,
+    borderColor: '#1a1a2e',
+  },
+  currentTag: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#1a1a2e',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginBottom: 6,
+  },
+  currentTagText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  currentTagLight: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginBottom: 6,
+  },
+  currentTagTextLight: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#fff',
   },
   tierName: {
     fontSize: 15,
@@ -195,5 +267,20 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontSize: 14,
     color: '#999',
+  },
+  activeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 28,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 14,
+    backgroundColor: '#f0fdfa',
+  },
+  activeBadgeText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0d9488',
   },
 });

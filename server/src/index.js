@@ -3,7 +3,7 @@ import cors from 'cors';
 import { rateLimit } from 'express-rate-limit';
 
 import { CATEGORY_QUERIES, fetchPlaces } from './places.js';
-import { enforceQuota, requireAuth, supabaseAdmin } from './auth.js';
+import { enforceQuota, requireAuth, supabaseAdmin, TIER_LIMITS } from './auth.js';
 
 // Qwen is served through Hugging Face's Inference Providers router, which is
 // OpenAI-compatible. HF_MODEL can be "<hf-model-id>" (router picks a provider
@@ -209,6 +209,44 @@ app.get('/health', (_req, res) => {
   });
 });
 
+// Powers the in-app plan/usage display (Saved tab, upgrade screen) — no
+// quota cost of its own, just reads current state.
+app.get('/api/account', requireAuth(), async (req, res) => {
+  const { data: profile, error: profileError } = await supabaseAdmin
+    .from('profiles')
+    .select('tier')
+    .eq('id', req.userId)
+    .single();
+
+  if (profileError || !profile) {
+    console.error('Could not load account for /api/account:', profileError);
+    res.status(500).json({ error: `Could not load account: ${profileError?.message ?? 'unknown error'}` });
+    return;
+  }
+
+  const periodStart = new Date();
+  const periodStartDate = `${periodStart.getFullYear()}-${String(periodStart.getMonth() + 1).padStart(2, '0')}-01`;
+
+  const { data: usage, error: usageError } = await supabaseAdmin
+    .from('usage_periods')
+    .select('search_count')
+    .eq('user_id', req.userId)
+    .eq('period_start', periodStartDate)
+    .maybeSingle();
+
+  if (usageError) {
+    console.error('Could not load usage for /api/account:', usageError);
+    res.status(500).json({ error: `Could not load usage: ${usageError.message}` });
+    return;
+  }
+
+  res.json({
+    tier: profile.tier,
+    searchesUsed: usage?.search_count ?? 0,
+    searchLimit: TIER_LIMITS[profile.tier] ?? TIER_LIMITS.free,
+  });
+});
+
 app.get('/api/places', paidApiLimiter, requireAuth(), enforceQuota(), async (req, res) => {
   const { location, category, lat, lng } = req.query;
 
@@ -253,7 +291,12 @@ app.get('/api/places', paidApiLimiter, requireAuth(), enforceQuota(), async (req
   }
 });
 
-app.post('/api/recommendations', paidApiLimiter, requireAuth(), enforceQuota(), async (req, res) => {
+// requireAuth() only, not enforceQuota() — a search always calls /api/places
+// first, which already counts it. Counting again here would silently halve
+// everyone's real monthly allowance (a free "30 searches" would only ever
+// be 15 full searches), which only became obvious once a user-facing usage
+// count needed to actually match what a "search" means to the user.
+app.post('/api/recommendations', paidApiLimiter, requireAuth(), async (req, res) => {
   const { location, category, places } = req.body ?? {};
 
   if (typeof location !== 'string' || typeof category !== 'string' || !Array.isArray(places) || places.length === 0) {

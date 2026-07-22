@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, ActivityIndicator, FlatList, LayoutAnimation, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { CategoryPills } from '../../components/CategoryPills';
@@ -9,6 +9,7 @@ import { LocationSearchBar } from '../../components/LocationSearchBar';
 import { PlaceCard } from '../../components/PlaceCard';
 import { PressableScale } from '../../components/PressableScale';
 import { useFavorites } from '../../contexts/FavoritesContext';
+import { fetchAccount, type Account } from '../../lib/account';
 import { mockLocation, mockPlaces } from '../../data/mockPlaces';
 import { getRankedPlaces } from '../../lib/aiRecommendations';
 import { fetchLikeCounts, type LikeInfo } from '../../lib/likes';
@@ -23,13 +24,29 @@ const BRAND_GRADIENT: [string, string] = ['#ff0080', '#ff8c00'];
 
 // Surfaced instead of one opaque "unavailable" message so a real cause
 // (expired session, hit the monthly search cap, server error, no
-// connection) is visible instead of guessing.
+// connection) is visible instead of guessing. Only used when there are no
+// real places at all — a places failure and a ranking failure are shown
+// with different wording (see rankingReasonMessage below) since "AI
+// ranking timed out on real results" and "no real results at all" are very
+// different situations and conflating them into one "sample data" message
+// is actively misleading.
 const REASON_MESSAGES: Record<FetchFailureReason, string> = {
   auth: 'Your session expired — sign out and back in to restore live results.',
   quota: "You've hit this month's search limit.",
   server: 'The server hit an error — showing sample data instead.',
   network: "Couldn't reach the server — showing sample data instead.",
 };
+
+function rankingReasonMessage(reason: FetchFailureReason | null): string {
+  switch (reason) {
+    case 'quota':
+      return "AI ranking hit this month's search limit — showing these real results with basic ranking.";
+    case 'auth':
+      return 'Your session expired, so AI ranking was skipped — showing these real results with basic ranking.';
+    default:
+      return 'AI ranking unavailable right now — showing these real results with basic ranking.';
+  }
+}
 
 export default function SearchScreen() {
   const [locationInput, setLocationInput] = useState(mockLocation);
@@ -39,15 +56,32 @@ export default function SearchScreen() {
   const [loading, setLoading] = useState(true);
   const [placesSource, setPlacesSource] = useState<'google' | 'mock'>('mock');
   const [rankingSource, setRankingSource] = useState<'qwen' | 'fallback'>('fallback');
-  const [failureReason, setFailureReason] = useState<FetchFailureReason | null>(null);
-  const [failureDetail, setFailureDetail] = useState<string | null>(null);
+  const [placesFailureReason, setPlacesFailureReason] = useState<FetchFailureReason | null>(null);
+  const [placesFailureDetail, setPlacesFailureDetail] = useState<string | null>(null);
+  const [rankingFailureReason, setRankingFailureReason] = useState<FetchFailureReason | null>(null);
+  const [rankingFailureDetail, setRankingFailureDetail] = useState<string | null>(null);
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [locating, setLocating] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>('top');
   const [refiningRanking, setRefiningRanking] = useState(false);
   const [likeCounts, setLikeCounts] = useState<Record<string, LikeInfo>>({});
+  const [account, setAccount] = useState<Account | null>(null);
   const { isFavorite, toggleFavorite } = useFavorites();
   const lastReasonRef = useRef<FetchFailureReason | null>(null);
+
+  // Refetch on focus (not just mount) so flipping tier in Supabase and
+  // coming back to this tab reflects it without needing to reopen the app.
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      fetchAccount().then((result) => {
+        if (!cancelled) setAccount(result);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }, [])
+  );
 
   // Places come from the server's Google Places-backed endpoint when it's
   // configured; if that's unavailable (no server, no API key, network error)
@@ -75,8 +109,10 @@ export default function SearchScreen() {
       setResults(rankPlaces(candidates));
       setRankingSource('fallback');
       setPlacesSource(placesResult.places ? 'google' : 'mock');
-      setFailureReason(placesResult.reason);
-      setFailureDetail(placesResult.detail);
+      setPlacesFailureReason(placesResult.reason);
+      setPlacesFailureDetail(placesResult.detail);
+      setRankingFailureReason(null);
+      setRankingFailureDetail(null);
       setLoading(false);
       setRefiningRanking(true);
 
@@ -86,10 +122,8 @@ export default function SearchScreen() {
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setResults(rankingResult.ranked);
       setRankingSource(rankingResult.source);
-      // Prefer the places failure reason since it happens first in the
-      // pipeline and is more likely the root cause of both fallbacks.
-      setFailureReason(placesResult.reason ?? rankingResult.reason);
-      setFailureDetail(placesResult.detail ?? rankingResult.detail);
+      setRankingFailureReason(rankingResult.reason);
+      setRankingFailureDetail(rankingResult.detail);
       setRefiningRanking(false);
     })();
 
@@ -118,13 +152,15 @@ export default function SearchScreen() {
 
   // Hitting the free cap is the single best moment to offer an upgrade —
   // the user just directly felt the limit. Fires once per new occurrence,
-  // not on every re-render while it stays 'quota'.
+  // not on every re-render while it stays 'quota'. Either endpoint can hit
+  // the cap (places and recommendations each count against it separately).
+  const activeReason = placesFailureReason ?? rankingFailureReason;
   useEffect(() => {
-    if (failureReason === 'quota' && lastReasonRef.current !== 'quota') {
+    if (activeReason === 'quota' && lastReasonRef.current !== 'quota') {
       router.push('/upgrade');
     }
-    lastReasonRef.current = failureReason;
-  }, [failureReason]);
+    lastReasonRef.current = activeReason;
+  }, [activeReason]);
 
   const selectCategory = (next: PlaceCategory) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -191,13 +227,25 @@ export default function SearchScreen() {
         </PressableScale>
       </View>
 
-      <TouchableOpacity onPress={() => router.push('/upgrade')} activeOpacity={0.85}>
-        <LinearGradient colors={BRAND_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.promoBanner}>
-          <Ionicons name="sparkles" size={16} color="#fff" />
-          <Text style={styles.promoText}>Go Plus for 1,000 searches a month</Text>
-          <Ionicons name="chevron-forward" size={16} color="#fff" />
-        </LinearGradient>
-      </TouchableOpacity>
+      {account?.tier === 'paid' ? (
+        <View style={styles.planBanner}>
+          <Ionicons name="checkmark-circle" size={16} color="#0d9488" />
+          <Text style={styles.planBannerText}>
+            Plus active — {account.searchesUsed}/{account.searchLimit} searches this month
+          </Text>
+        </View>
+      ) : (
+        <TouchableOpacity onPress={() => router.push('/upgrade')} activeOpacity={0.85}>
+          <LinearGradient colors={BRAND_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.promoBanner}>
+            <Ionicons name="sparkles" size={16} color="#fff" />
+            <Text style={styles.promoText}>
+              {account ? `${account.searchesUsed}/${account.searchLimit} searches used — ` : ''}Go Plus for 1,000
+              searches a month
+            </Text>
+            <Ionicons name="chevron-forward" size={16} color="#fff" />
+          </LinearGradient>
+        </TouchableOpacity>
+      )}
 
       {!loading && refiningRanking && (
         <View style={styles.refiningRow}>
@@ -205,10 +253,16 @@ export default function SearchScreen() {
           <Text style={styles.refiningText}>Refining with AI…</Text>
         </View>
       )}
-      {!loading && !refiningRanking && (placesSource === 'mock' || rankingSource === 'fallback') && (
+      {!loading && !refiningRanking && placesSource === 'mock' && (
         <Text style={styles.fallbackNotice}>
-          {failureReason ? REASON_MESSAGES[failureReason] : 'Live search unavailable — showing sample data'}
-          {failureDetail ? ` (${failureDetail})` : ''}
+          {placesFailureReason ? REASON_MESSAGES[placesFailureReason] : 'Live search unavailable — showing sample data'}
+          {placesFailureDetail ? ` (${placesFailureDetail})` : ''}
+        </Text>
+      )}
+      {!loading && !refiningRanking && placesSource === 'google' && rankingSource === 'fallback' && (
+        <Text style={styles.fallbackNotice}>
+          {rankingReasonMessage(rankingFailureReason)}
+          {rankingFailureDetail ? ` (${rankingFailureDetail})` : ''}
         </Text>
       )}
       {loading ? (
@@ -284,6 +338,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 12,
+  },
+  planBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 16,
+    marginTop: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: '#f0fdfa',
+  },
+  planBannerText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0d9488',
   },
   promoText: {
     flex: 1,
