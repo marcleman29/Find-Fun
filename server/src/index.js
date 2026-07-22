@@ -203,6 +203,9 @@ app.get('/health', (_req, res) => {
     qwenConfigured: Boolean(HF_TOKEN),
     placesConfigured: Boolean(SERPAPI_KEY),
     authConfigured: Boolean(supabaseAdmin),
+    // Bumped whenever a fix needs to be confirmed live without digging
+    // through Render's dashboard — compare this against what's expected.
+    deployMarker: 'profile-self-heal-v1',
   });
 });
 
