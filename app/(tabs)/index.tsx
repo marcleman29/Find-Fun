@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, ActivityIndicator, FlatList, LayoutAnimation, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { CategoryPills } from '../../components/CategoryPills';
@@ -9,6 +9,7 @@ import { LocationSearchBar } from '../../components/LocationSearchBar';
 import { PlaceCard } from '../../components/PlaceCard';
 import { PressableScale } from '../../components/PressableScale';
 import { useFavorites } from '../../contexts/FavoritesContext';
+import { fetchAccount, type Account } from '../../lib/account';
 import { mockLocation, mockPlaces } from '../../data/mockPlaces';
 import { getRankedPlaces } from '../../lib/aiRecommendations';
 import { fetchLikeCounts, type LikeInfo } from '../../lib/likes';
@@ -64,8 +65,23 @@ export default function SearchScreen() {
   const [sortMode, setSortMode] = useState<SortMode>('top');
   const [refiningRanking, setRefiningRanking] = useState(false);
   const [likeCounts, setLikeCounts] = useState<Record<string, LikeInfo>>({});
+  const [account, setAccount] = useState<Account | null>(null);
   const { isFavorite, toggleFavorite } = useFavorites();
   const lastReasonRef = useRef<FetchFailureReason | null>(null);
+
+  // Refetch on focus (not just mount) so flipping tier in Supabase and
+  // coming back to this tab reflects it without needing to reopen the app.
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      fetchAccount().then((result) => {
+        if (!cancelled) setAccount(result);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }, [])
+  );
 
   // Places come from the server's Google Places-backed endpoint when it's
   // configured; if that's unavailable (no server, no API key, network error)
@@ -211,13 +227,25 @@ export default function SearchScreen() {
         </PressableScale>
       </View>
 
-      <TouchableOpacity onPress={() => router.push('/upgrade')} activeOpacity={0.85}>
-        <LinearGradient colors={BRAND_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.promoBanner}>
-          <Ionicons name="sparkles" size={16} color="#fff" />
-          <Text style={styles.promoText}>Go Plus for 1,000 searches a month</Text>
-          <Ionicons name="chevron-forward" size={16} color="#fff" />
-        </LinearGradient>
-      </TouchableOpacity>
+      {account?.tier === 'paid' ? (
+        <View style={styles.planBanner}>
+          <Ionicons name="checkmark-circle" size={16} color="#0d9488" />
+          <Text style={styles.planBannerText}>
+            Plus active — {account.searchesUsed}/{account.searchLimit} searches this month
+          </Text>
+        </View>
+      ) : (
+        <TouchableOpacity onPress={() => router.push('/upgrade')} activeOpacity={0.85}>
+          <LinearGradient colors={BRAND_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.promoBanner}>
+            <Ionicons name="sparkles" size={16} color="#fff" />
+            <Text style={styles.promoText}>
+              {account ? `${account.searchesUsed}/${account.searchLimit} searches used — ` : ''}Go Plus for 1,000
+              searches a month
+            </Text>
+            <Ionicons name="chevron-forward" size={16} color="#fff" />
+          </LinearGradient>
+        </TouchableOpacity>
+      )}
 
       {!loading && refiningRanking && (
         <View style={styles.refiningRow}>
@@ -310,6 +338,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 12,
+  },
+  planBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 16,
+    marginTop: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: '#f0fdfa',
+  },
+  planBannerText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0d9488',
   },
   promoText: {
     flex: 1,
