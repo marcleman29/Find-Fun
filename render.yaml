@@ -12,7 +12,7 @@ services:
       - key: HF_BASE_URL
         value: https://router.huggingface.co/v1
       - key: HF_MODEL
-        value: Qwen/Qwen2.5-72B-Instruct
+        value: Qwen/Qwen2.5-7B-Instruct
       - key: SERPAPI_KEY
         sync: false
       - key: SUPABASE_URL

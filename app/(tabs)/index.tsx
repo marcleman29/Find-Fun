@@ -14,6 +14,7 @@ import { getRankedPlaces } from '../../lib/aiRecommendations';
 import { fetchLikeCounts, type LikeInfo } from '../../lib/likes';
 import { getCurrentLocation } from '../../lib/location';
 import { fetchPlaces, type FetchFailureReason } from '../../lib/places';
+import { rankPlaces } from '../../lib/ranking';
 import type { PlaceCategory, RankedPlace } from '../../lib/types';
 
 type SortMode = 'top' | 'trending';
@@ -43,6 +44,7 @@ export default function SearchScreen() {
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [locating, setLocating] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>('top');
+  const [refiningRanking, setRefiningRanking] = useState(false);
   const [likeCounts, setLikeCounts] = useState<Record<string, LikeInfo>>({});
   const { isFavorite, toggleFavorite } = useFavorites();
   const lastReasonRef = useRef<FetchFailureReason | null>(null);
@@ -52,25 +54,43 @@ export default function SearchScreen() {
   // this falls back to the bundled mock dataset so search still works.
   // Ranking is a separate fallback: Qwen when available, a local heuristic
   // otherwise — independent of where the underlying places came from.
+  //
+  // The two calls used to be awaited back-to-back behind one spinner. Qwen
+  // is a 72B-parameter model through a shared inference API — genuinely
+  // slow, sometimes 10-20s+ — so that made every search feel broken even
+  // though the place data itself is usually back in a couple of seconds.
+  // Now: show the local-heuristic ranking the instant places arrive, then
+  // swap in the AI ranking when it resolves, instead of blocking on both.
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setRefiningRanking(false);
 
     (async () => {
       const placesResult = await fetchPlaces(searchedLocation, category, coords ?? undefined);
-      const candidates = placesResult.places ?? mockPlaces.filter((place) => place.category === category);
-      const rankingResult = await getRankedPlaces(searchedLocation, category, candidates);
-
       if (cancelled) return;
+
+      const candidates = placesResult.places ?? mockPlaces.filter((place) => place.category === category);
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setResults(rankPlaces(candidates));
+      setRankingSource('fallback');
+      setPlacesSource(placesResult.places ? 'google' : 'mock');
+      setFailureReason(placesResult.reason);
+      setFailureDetail(placesResult.detail);
+      setLoading(false);
+      setRefiningRanking(true);
+
+      const rankingResult = await getRankedPlaces(searchedLocation, category, candidates);
+      if (cancelled) return;
+
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setResults(rankingResult.ranked);
       setRankingSource(rankingResult.source);
-      setPlacesSource(placesResult.places ? 'google' : 'mock');
       // Prefer the places failure reason since it happens first in the
       // pipeline and is more likely the root cause of both fallbacks.
       setFailureReason(placesResult.reason ?? rankingResult.reason);
       setFailureDetail(placesResult.detail ?? rankingResult.detail);
-      setLoading(false);
+      setRefiningRanking(false);
     })();
 
     return () => {
@@ -179,7 +199,13 @@ export default function SearchScreen() {
         </LinearGradient>
       </TouchableOpacity>
 
-      {!loading && (placesSource === 'mock' || rankingSource === 'fallback') && (
+      {!loading && refiningRanking && (
+        <View style={styles.refiningRow}>
+          <ActivityIndicator size="small" color="#3949ab" />
+          <Text style={styles.refiningText}>Refining with AI…</Text>
+        </View>
+      )}
+      {!loading && !refiningRanking && (placesSource === 'mock' || rankingSource === 'fallback') && (
         <Text style={styles.fallbackNotice}>
           {failureReason ? REASON_MESSAGES[failureReason] : 'Live search unavailable — showing sample data'}
           {failureDetail ? ` (${failureDetail})` : ''}
@@ -270,6 +296,17 @@ const styles = StyleSheet.create({
     paddingTop: 6,
     fontSize: 12,
     color: '#b45309',
+  },
+  refiningRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 6,
+  },
+  refiningText: {
+    fontSize: 12,
+    color: '#3949ab',
   },
   loading: {
     marginTop: 40,
