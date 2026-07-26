@@ -112,6 +112,7 @@ export function enforceQuota() {
       return;
     }
 
+    req.tier = profile.tier;
     next();
   };
 }

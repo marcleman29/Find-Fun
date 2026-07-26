@@ -36,7 +36,7 @@ const REASON_MESSAGES: Record<FetchFailureReason, string> = {
   quota: "You've hit this month's search limit.",
   server: 'The server hit an error — showing sample data instead.',
   network: "Couldn't reach the server — showing sample data instead.",
-  budget: 'Live search is paused for the rest of the month — showing sample data instead.',
+  budget: 'Free live search is paused for the rest of the month — upgrade to Plus to keep searching.',
 };
 
 function rankingReasonMessage(reason: FetchFailureReason | null): string {
@@ -45,8 +45,6 @@ function rankingReasonMessage(reason: FetchFailureReason | null): string {
       return "AI ranking hit this month's search limit — showing these real results with basic ranking.";
     case 'auth':
       return 'Your session expired, so AI ranking was skipped — showing these real results with basic ranking.';
-    case 'budget':
-      return 'AI ranking is paused for the rest of the month — showing these real results with basic ranking.';
     default:
       return 'AI ranking unavailable right now — showing these real results with basic ranking.';
   }

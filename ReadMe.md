@@ -90,9 +90,9 @@ By default the app points at `http://localhost:3000`. This works for the iOS Sim
 
 ### Cost controls
 
-Two independent things keep the server's monthly bill bounded, since per-user quotas alone only limit one account, not total spend across every signup:
-- **Per-user quotas** above (10/month free, 100/week Plus) via `usage_periods`.
-- **A hard monthly call budget** on SerpApi and Qwen/HF calls (`server/src/costGuard.js`, tunable via `SERPAPI_MONTHLY_CALL_BUDGET`/`HF_MONTHLY_CALL_BUDGET` env vars) — once hit, `/api/places` and `/api/recommendations` return a clear "paused for the rest of the month" response instead of continuing to spend, regardless of how many users are asking. The SerpApi default (900) is sized under SerpApi's $25/mo Starter plan (1,000 calls/month, ~10 calls per uncached search) — check your actual SerpApi plan and adjust the env var before relying on it.
+Free tier has no natural cost check — anyone can create unlimited free accounts — so it gets a shared monthly call budget on top of its per-account quota (`server/src/costGuard.js`, tunable via `SERPAPI_FREE_MONTHLY_CALL_BUDGET`). Once hit, `/api/places` pauses live search for free accounts only (a 402 response, client falls back to sample data) rather than continuing to spend. The default (400 calls) is a modest slice of SerpApi's $25/mo Starter plan (1,000 calls/month, ~10 calls per uncached search) — check your actual SerpApi plan and adjust the env var before relying on it.
+
+Paid tier is **not** subject to that shared budget. A paying customer's request is bounded only by their own advertised weekly quota (100/week, enforced via `usage_periods`) and by SerpApi's real account capacity — never by a pool that other accounts (free or paid) can exhaust out from under them. If paid usage ever grows enough to matter, that shows up directly in your SerpApi/HF billing dashboards; raise the SerpApi plan or lower `TIER_LIMITS.paid` at that point rather than relying on a shared cap to protect a paying customer's own service.
 
 ## Deploying the server (so a built/installed app can reach it)
 

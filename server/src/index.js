@@ -4,7 +4,7 @@ import { rateLimit } from 'express-rate-limit';
 
 import { CATEGORY_QUERIES, fetchPlaces } from './places.js';
 import { enforceQuota, requireAuth, supabaseAdmin, TIER_LIMITS, PERIOD_LABEL, currentPeriodStart } from './auth.js';
-import { BudgetExceededError, recordUsage, remainingBudget } from './costGuard.js';
+import { BudgetExceededError, recordUsage } from './costGuard.js';
 
 // Qwen is served through Hugging Face's Inference Providers router, which is
 // OpenAI-compatible. HF_MODEL can be "<hf-model-id>" (router picks a provider
@@ -16,9 +16,6 @@ const HF_MODEL = process.env.HF_MODEL ?? 'Qwen/Qwen2.5-72B-Instruct';
 // API — see the comment in places.js for why.
 const SERPAPI_KEY = process.env.SERPAPI_KEY;
 const PORT = process.env.PORT ?? 3000;
-// Qwen is now Plus-only (see /api/recommendations), so volume is already
-// bounded by paying subscribers — this is a backstop, not the main lever.
-const HF_MONTHLY_CALL_BUDGET = Number(process.env.HF_MONTHLY_CALL_BUDGET ?? 2000);
 
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const cache = new Map();
@@ -79,10 +76,6 @@ function extractJson(content) {
 }
 
 async function getQwenRecommendations(location, category, places) {
-  if (remainingBudget('hf', HF_MONTHLY_CALL_BUDGET) <= 0) {
-    throw new BudgetExceededError('Monthly Qwen call budget exhausted');
-  }
-
   const response = await fetch(`${HF_BASE_URL}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -291,12 +284,12 @@ app.get('/api/places', paidApiLimiter, requireAuth(), enforceQuota(), async (req
   }
 
   try {
-    const places = await fetchPlaces(SERPAPI_KEY, location, category, coords);
+    const places = await fetchPlaces(SERPAPI_KEY, location, category, coords, req.tier);
     placesCache.set(key, { places, expires: Date.now() + PLACES_CACHE_TTL_MS });
     res.json({ source: 'google', places });
   } catch (error) {
     if (error instanceof BudgetExceededError) {
-      res.status(402).json({ error: 'Live search is paused for the rest of the month to stay within budget.' });
+      res.status(402).json({ error: 'SerpApi budget reached for free tier this month' });
       return;
     }
     console.error('Places request failed:', error);
@@ -313,7 +306,10 @@ app.get('/api/places', paidApiLimiter, requireAuth(), enforceQuota(), async (req
 // AI ranking is Plus-only: free accounts get a 403 here so the client can
 // show a clear upgrade prompt instead of a generic failure. This is also
 // the real cost control for Qwen, not just a UI distinction — it caps AI
-// call volume to paying subscribers instead of every signup.
+// call volume to paying subscribers instead of every signup, so there's no
+// separate monthly budget gate on top of that (a paying customer's request
+// should never get turned away by a shared pool other accounts drew down —
+// only by their own advertised weekly quota, enforced above via 403/429).
 app.post('/api/recommendations', paidApiLimiter, requireAuth(), async (req, res) => {
   const { location, category, places } = req.body ?? {};
 
@@ -356,10 +352,6 @@ app.post('/api/recommendations', paidApiLimiter, requireAuth(), async (req, res)
     cache.set(key, { recommendations, expires: Date.now() + CACHE_TTL_MS });
     res.json({ source: 'qwen', recommendations });
   } catch (error) {
-    if (error instanceof BudgetExceededError) {
-      res.status(402).json({ error: 'AI ranking is paused for the rest of the month to stay within budget.' });
-      return;
-    }
     console.error('Qwen recommendation request failed:', error);
     res.status(502).json({ error: 'Failed to get recommendations from Qwen' });
   }
