@@ -12,14 +12,18 @@ const CATEGORY_QUERIES = {
 };
 
 const SERPAPI_BASE_URL = 'https://serpapi.com/search.json';
-const MAX_CANDIDATES_TO_ENRICH = 9;
-const MAX_REVIEWS_PER_PLACE = 5;
 // Each uncached search burns up to 1 + MAX_CANDIDATES_TO_ENRICH SerpApi
-// calls. This budget only ever throttles free tier — free is the only
-// traffic with no natural cost check (anyone can sign up for free,
-// unlimited times), so it's the only one that needs a shared ceiling.
-// Paying customers are bounded by their own weekly quota (TIER_LIMITS.paid
-// in auth.js) instead: a known, expected limit, never a shared pool that
+// calls — 7 at this setting, $0.175/search on SerpApi's $25/mo Starter plan
+// ($0.025/call). This is the number the paid tier quotas in auth.js's
+// TIER_LIMITS are sized against to guarantee their profit margin; raising
+// this without re-checking that math would erode the guarantee.
+const MAX_CANDIDATES_TO_ENRICH = 6;
+const MAX_REVIEWS_PER_PLACE = 5;
+// This budget only ever throttles free tier — free is the only traffic
+// with no natural cost check (anyone can sign up for free, unlimited
+// times), so it's the only one that needs a shared ceiling. Paying
+// customers are bounded by their own monthly quota (TIER_LIMITS in
+// auth.js) instead: a known, expected limit, never a shared pool that
 // someone else's usage — free or paid — can exhaust out from under them.
 // Sized as a modest slice of SerpApi's $25/mo Starter plan (1,000 calls);
 // check your actual plan before raising it.
@@ -73,14 +77,15 @@ async function fetchReviews(apiKey, dataId, budgetName) {
 }
 
 export async function fetchPlaces(apiKey, location, category, coords, tier) {
-  const budgetName = tier === 'paid' ? 'serpapi_paid' : 'serpapi_free';
+  const isFree = tier === 'free' || !tier;
+  const budgetName = isFree ? 'serpapi_free' : 'serpapi_paid';
 
   // Checked once per search rather than per SerpApi call — a search already
   // in flight is allowed to finish rather than fail partway through; this
   // only blocks the *next* search once free tier's monthly budget is used
-  // up. Paid is recorded (budgetName above) for visibility but never gated
-  // here — see the comment on SERPAPI_FREE_MONTHLY_CALL_BUDGET for why.
-  if (tier !== 'paid' && remainingBudget(budgetName, SERPAPI_FREE_MONTHLY_CALL_BUDGET) <= 0) {
+  // up. Paid tiers are recorded (budgetName above) for visibility but never
+  // gated here — see the comment on SERPAPI_FREE_MONTHLY_CALL_BUDGET for why.
+  if (isFree && remainingBudget(budgetName, SERPAPI_FREE_MONTHLY_CALL_BUDGET) <= 0) {
     throw new BudgetExceededError('Monthly SerpApi call budget exhausted for free tier');
   }
 

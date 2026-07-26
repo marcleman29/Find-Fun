@@ -1,10 +1,10 @@
 -- Run once in Supabase's SQL Editor, after schema.sql/grants.sql.
 -- Changes increment_usage to accept an explicit period_start instead of
--- always assuming "this calendar month" — needed because Plus now resets
--- weekly (100/week) while Free still resets monthly (10/month), and the
--- server (not Postgres) decides which period applies based on the
--- caller's tier. Same usage_periods table and primary key, just a caller
--- supplied period_start instead of one computed inside the function.
+-- always computing "this calendar month" inside the function — the server
+-- (server/src/auth.js's currentPeriodStart) decides the period so quota
+-- logic lives in one place instead of split between JS and SQL. Same
+-- usage_periods table and primary key, just a caller-supplied
+-- period_start instead of one computed here.
 
 drop function if exists increment_usage(uuid);
 

@@ -10,6 +10,7 @@ import { useFavorites } from '../../contexts/FavoritesContext';
 import { fetchAccount, type Account } from '../../lib/account';
 import { mockPlaces } from '../../data/mockPlaces';
 import { rankPlaces } from '../../lib/ranking';
+import { TIER_NAMES } from '../../lib/tiers';
 
 export default function SavedScreen() {
   const { favoriteIds, isFavorite, toggleFavorite } = useFavorites();
@@ -48,18 +49,17 @@ export default function SavedScreen() {
 
       {account && (
         <TouchableOpacity
-          style={[styles.planRow, account.tier === 'paid' && styles.planRowPaid]}
+          style={[styles.planRow, account.tier !== 'free' && styles.planRowPaid]}
           onPress={() => router.push('/upgrade')}
           activeOpacity={0.85}
         >
           <Ionicons
-            name={account.tier === 'paid' ? 'checkmark-circle' : 'lock-closed'}
+            name={account.tier !== 'free' ? 'checkmark-circle' : 'lock-closed'}
             size={16}
-            color={account.tier === 'paid' ? '#0d9488' : '#999'}
+            color={account.tier !== 'free' ? '#0d9488' : '#999'}
           />
-          <Text style={[styles.planText, account.tier === 'paid' && styles.planTextPaid]}>
-            {account.tier === 'paid' ? 'Plus plan' : 'Free plan'} · {account.searchesUsed}/{account.searchLimit}{' '}
-            searches this {account.period}
+          <Text style={[styles.planText, account.tier !== 'free' && styles.planTextPaid]}>
+            {TIER_NAMES[account.tier]} plan · {account.searchesUsed}/{account.searchLimit} searches this month
           </Text>
           {account.tier === 'free' && <Text style={styles.planUpgradeLink}>Upgrade</Text>}
         </TouchableOpacity>

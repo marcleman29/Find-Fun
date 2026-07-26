@@ -3,7 +3,7 @@ import cors from 'cors';
 import { rateLimit } from 'express-rate-limit';
 
 import { CATEGORY_QUERIES, fetchPlaces } from './places.js';
-import { enforceQuota, requireAuth, supabaseAdmin, TIER_LIMITS, PERIOD_LABEL, currentPeriodStart } from './auth.js';
+import { enforceQuota, requireAuth, supabaseAdmin, TIER_LIMITS, currentPeriodStart } from './auth.js';
 import { BudgetExceededError, recordUsage } from './costGuard.js';
 
 // Qwen is served through Hugging Face's Inference Providers router, which is
@@ -226,7 +226,7 @@ app.get('/api/account', requireAuth(), async (req, res) => {
     return;
   }
 
-  const periodStart = currentPeriodStart(profile.tier);
+  const periodStart = currentPeriodStart();
 
   const { data: usage, error: usageError } = await supabaseAdmin
     .from('usage_periods')
@@ -245,7 +245,6 @@ app.get('/api/account', requireAuth(), async (req, res) => {
     tier: profile.tier,
     searchesUsed: usage?.search_count ?? 0,
     searchLimit: TIER_LIMITS[profile.tier] ?? TIER_LIMITS.free,
-    period: PERIOD_LABEL[profile.tier] ?? 'month',
   });
 });
 
@@ -330,8 +329,8 @@ app.post('/api/recommendations', paidApiLimiter, requireAuth(), async (req, res)
     return;
   }
 
-  if (profile.tier !== 'paid') {
-    res.status(403).json({ error: 'AI ranking is a Plus feature — upgrade to unlock it.' });
+  if (profile.tier === 'free') {
+    res.status(403).json({ error: 'AI ranking is a paid feature — upgrade to unlock it.' });
     return;
   }
 

@@ -16,7 +16,7 @@ import { fetchLikeCounts, type LikeInfo } from '../../lib/likes';
 import { getCurrentLocation } from '../../lib/location';
 import { fetchPlaces, type FetchFailureReason } from '../../lib/places';
 import { rankPlaces } from '../../lib/ranking';
-import { PLUS_WEEKLY_SEARCHES } from '../../lib/tiers';
+import { PAID_TIERS, TIER_NAMES } from '../../lib/tiers';
 import type { PlaceCategory, RankedPlace } from '../../lib/types';
 
 type SortMode = 'top' | 'trending';
@@ -36,7 +36,7 @@ const REASON_MESSAGES: Record<FetchFailureReason, string> = {
   quota: "You've hit this month's search limit.",
   server: 'The server hit an error — showing sample data instead.',
   network: "Couldn't reach the server — showing sample data instead.",
-  budget: 'Free live search is paused for the rest of the month — upgrade to Plus to keep searching.',
+  budget: 'Free live search is paused for the rest of the month — upgrade to keep searching.',
 };
 
 function rankingReasonMessage(reason: FetchFailureReason | null): string {
@@ -126,9 +126,9 @@ export default function SearchScreen() {
       setRankingFailureDetail(null);
       setLoading(false);
 
-      // AI ranking is a Plus feature — skip the round trip entirely for
+      // AI ranking is a paid feature — skip the round trip entirely for
       // free accounts instead of calling the server just to get a 403 back.
-      if (accountRef.current?.tier !== 'paid') return;
+      if (accountRef.current?.tier === 'free' || !accountRef.current) return;
 
       setRefiningRanking(true);
 
@@ -243,11 +243,11 @@ export default function SearchScreen() {
         </PressableScale>
       </View>
 
-      {account?.tier === 'paid' ? (
+      {account && account.tier !== 'free' ? (
         <View style={styles.planBanner}>
           <Ionicons name="checkmark-circle" size={16} color="#0d9488" />
           <Text style={styles.planBannerText}>
-            Plus active — {account.searchesUsed}/{account.searchLimit} searches this {account.period}
+            {TIER_NAMES[account.tier]} active — {account.searchesUsed}/{account.searchLimit} searches this month
           </Text>
         </View>
       ) : (
@@ -255,8 +255,8 @@ export default function SearchScreen() {
           <LinearGradient colors={BRAND_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.promoBanner}>
             <Ionicons name="sparkles" size={16} color="#fff" />
             <Text style={styles.promoText}>
-              {account ? `${account.searchesUsed}/${account.searchLimit} searches used — ` : ''}Go Plus for AI-curated
-              rankings + {PLUS_WEEKLY_SEARCHES} searches a week
+              {account ? `${account.searchesUsed}/${account.searchLimit} searches used — ` : ''}Upgrade for AI-curated
+              rankings + more searches, from {PAID_TIERS[0].price}/mo
             </Text>
             <Ionicons name="chevron-forward" size={16} color="#fff" />
           </LinearGradient>
@@ -275,17 +275,17 @@ export default function SearchScreen() {
           {placesFailureDetail ? ` (${placesFailureDetail})` : ''}
         </Text>
       )}
-      {!loading && !refiningRanking && placesSource === 'google' && rankingSource === 'fallback' && account?.tier === 'paid' && (
+      {!loading && !refiningRanking && placesSource === 'google' && rankingSource === 'fallback' && account && account.tier !== 'free' && (
         <Text style={styles.fallbackNotice}>
           {rankingReasonMessage(rankingFailureReason)}
           {rankingFailureDetail ? ` (${rankingFailureDetail})` : ''}
         </Text>
       )}
-      {!loading && !refiningRanking && placesSource === 'google' && account && account.tier !== 'paid' && (
+      {!loading && !refiningRanking && placesSource === 'google' && account && account.tier === 'free' && (
         <TouchableOpacity onPress={() => router.push('/upgrade')} activeOpacity={0.85}>
           <View style={styles.aiUpsellRow}>
             <Ionicons name="sparkles" size={14} color="#3949ab" />
-            <Text style={styles.aiUpsellText}>Upgrade to Plus for AI-curated rankings</Text>
+            <Text style={styles.aiUpsellText}>Upgrade for AI-curated rankings</Text>
             <Ionicons name="chevron-forward" size={14} color="#3949ab" />
           </View>
         </TouchableOpacity>

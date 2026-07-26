@@ -7,31 +7,23 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 export const supabaseAdmin =
   SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) : null;
 
-// Search allowance per subscription tier. 'paid' is a placeholder until
-// subscription billing (RevenueCat) exists — for now it's set manually per
-// user in the profiles table for testing. Free resets monthly; paid resets
-// weekly (see currentPeriodStart) so one subscriber's heavy month can't
-// compound into an open-ended bill the way a flat monthly cap could.
+// Monthly search allowance per subscription tier. Paid tiers are a
+// placeholder until subscription billing (RevenueCat) exists — for now
+// tier is set manually in the profiles table for testing. Each paid tier's
+// quota is sized so that even a subscriber using their *entire* monthly
+// allowance (worst case, no cache hit — see MAX_CANDIDATES_TO_ENRICH in
+// places.js) keeps SerpApi cost under ~55% of what they paid, guaranteeing
+// at least a 30-40% profit margin after Google Play's ~15% cut. Raising a
+// tier's quota without re-checking that math would erode the guarantee.
 export const TIER_LIMITS = {
   free: 10,
-  paid: 100,
+  plus: 12,
+  pro: 25,
+  max: 50,
 };
 
-export const PERIOD_LABEL = {
-  free: 'month',
-  paid: 'week',
-};
-
-// Free tier keys usage by calendar month; paid keys by ISO week (Monday
-// start, UTC) since it resets weekly. The server decides the period here
-// rather than in SQL so both tiers can share one usage_periods table/RPC.
-export function currentPeriodStart(tier) {
+export function currentPeriodStart() {
   const now = new Date();
-  if (tier === 'paid') {
-    const dayIndex = (now.getUTCDay() + 6) % 7; // Monday = 0
-    const monday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - dayIndex));
-    return monday.toISOString().slice(0, 10);
-  }
   return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-01`;
 }
 
@@ -93,7 +85,7 @@ export function enforceQuota() {
     }
 
     const limit = TIER_LIMITS[profile.tier] ?? TIER_LIMITS.free;
-    const periodStart = currentPeriodStart(profile.tier);
+    const periodStart = currentPeriodStart();
 
     const { data: count, error: usageError } = await supabaseAdmin.rpc('increment_usage', {
       p_user_id: req.userId,
@@ -107,8 +99,7 @@ export function enforceQuota() {
     }
 
     if (count > limit) {
-      const label = PERIOD_LABEL[profile.tier] ?? 'month';
-      res.status(429).json({ error: `This ${label}'s search limit reached (${limit}) for the ${profile.tier} tier` });
+      res.status(429).json({ error: `This month's search limit reached (${limit}) for the ${profile.tier} tier` });
       return;
     }
 
