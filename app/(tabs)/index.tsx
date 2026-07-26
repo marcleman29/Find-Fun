@@ -2,7 +2,17 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, ActivityIndicator, FlatList, LayoutAnimation, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  Alert,
+  ActivityIndicator,
+  FlatList,
+  LayoutAnimation,
+  StyleSheet,
+  Switch,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 
 import { CategoryPills } from '../../components/CategoryPills';
 import { LocationSearchBar } from '../../components/LocationSearchBar';
@@ -17,7 +27,7 @@ import { getCurrentLocation } from '../../lib/location';
 import { fetchPlaces, type FetchFailureReason } from '../../lib/places';
 import { rankPlaces } from '../../lib/ranking';
 import { PAID_TIERS, TIER_NAMES } from '../../lib/tiers';
-import type { PlaceCategory, RankedPlace } from '../../lib/types';
+import type { Place, PlaceCategory, RankedPlace } from '../../lib/types';
 
 type SortMode = 'top' | 'trending';
 
@@ -68,6 +78,11 @@ export default function SearchScreen() {
   const [refiningRanking, setRefiningRanking] = useState(false);
   const [likeCounts, setLikeCounts] = useState<Record<string, LikeInfo>>({});
   const [account, setAccount] = useState<Account | null>(null);
+  const [candidates, setCandidates] = useState<Place[]>([]);
+  // Off by default — AI ranking only runs when a paying user explicitly
+  // flips this on, not automatically on every search. Persists across
+  // searches (a switch, not a one-shot per-search choice) until turned off.
+  const [aiEnabled, setAiEnabled] = useState(false);
   const { isFavorite, toggleFavorite } = useFavorites();
   const lastReasonRef = useRef<FetchFailureReason | null>(null);
   // Read inside the places-fetch effect below without making it a dependency
@@ -97,27 +112,21 @@ export default function SearchScreen() {
   // Places come from the server's Google Places-backed endpoint when it's
   // configured; if that's unavailable (no server, no API key, network error)
   // this falls back to the bundled mock dataset so search still works.
-  // Ranking is a separate fallback: Qwen when available, a local heuristic
-  // otherwise — independent of where the underlying places came from.
-  //
-  // The two calls used to be awaited back-to-back behind one spinner. Qwen
-  // is a 72B-parameter model through a shared inference API — genuinely
-  // slow, sometimes 10-20s+ — so that made every search feel broken even
-  // though the place data itself is usually back in a couple of seconds.
-  // Now: show the local-heuristic ranking the instant places arrive, then
-  // swap in the AI ranking when it resolves, instead of blocking on both.
+  // Shows the local-heuristic ranking immediately — AI ranking (if enabled)
+  // is handled by a separate effect below so flipping the AI switch doesn't
+  // need to re-fetch places (and re-spend a SerpApi call) to apply.
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    setRefiningRanking(false);
 
     (async () => {
       const placesResult = await fetchPlaces(searchedLocation, category, coords ?? undefined);
       if (cancelled) return;
 
-      const candidates = placesResult.places ?? mockPlaces.filter((place) => place.category === category);
+      const fetchedCandidates = placesResult.places ?? mockPlaces.filter((place) => place.category === category);
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      setResults(rankPlaces(candidates));
+      setCandidates(fetchedCandidates);
+      setResults(rankPlaces(fetchedCandidates));
       setRankingSource('fallback');
       setPlacesSource(placesResult.places ? 'google' : 'mock');
       setPlacesFailureReason(placesResult.reason);
@@ -125,13 +134,35 @@ export default function SearchScreen() {
       setRankingFailureReason(null);
       setRankingFailureDetail(null);
       setLoading(false);
+    })();
 
-      // AI ranking is a paid feature — skip the round trip entirely for
-      // free accounts instead of calling the server just to get a 403 back.
-      if (accountRef.current?.tier === 'free' || !accountRef.current) return;
+    return () => {
+      cancelled = true;
+    };
+  }, [category, searchedLocation, coords]);
 
-      setRefiningRanking(true);
+  // AI ranking is a paid feature, and now opt-in even for paying users —
+  // it only runs when aiEnabled is on, whether that's already true when a
+  // new search lands here or the user flips it on for results already on
+  // screen. Qwen is genuinely slow (10-20s+ through a shared inference
+  // API), so this stays a separate step from the instant heuristic ranking
+  // above rather than blocking the first result on it.
+  useEffect(() => {
+    if (candidates.length === 0 || placesSource !== 'google') return;
 
+    if (!aiEnabled || accountRef.current?.tier === 'free' || !accountRef.current) {
+      setResults(rankPlaces(candidates));
+      setRankingSource('fallback');
+      setRankingFailureReason(null);
+      setRankingFailureDetail(null);
+      setRefiningRanking(false);
+      return;
+    }
+
+    let cancelled = false;
+    setRefiningRanking(true);
+
+    (async () => {
       const rankingResult = await getRankedPlaces(searchedLocation, category, candidates);
       if (cancelled) return;
 
@@ -146,7 +177,7 @@ export default function SearchScreen() {
     return () => {
       cancelled = true;
     };
-  }, [category, searchedLocation, coords]);
+  }, [candidates, aiEnabled, placesSource, searchedLocation, category]);
 
   // Only fetch like counts when Trending is actually selected — no point
   // paying that round trip for the default Top Picks view.
@@ -244,12 +275,19 @@ export default function SearchScreen() {
       </View>
 
       {account && account.tier !== 'free' ? (
-        <View style={styles.planBanner}>
-          <Ionicons name="checkmark-circle" size={16} color="#0d9488" />
-          <Text style={styles.planBannerText}>
-            {TIER_NAMES[account.tier]} active — {account.searchesUsed}/{account.searchLimit} searches this month
-          </Text>
-        </View>
+        <>
+          <View style={styles.planBanner}>
+            <Ionicons name="checkmark-circle" size={16} color="#0d9488" />
+            <Text style={styles.planBannerText}>
+              {TIER_NAMES[account.tier]} active — {account.searchesUsed}/{account.searchLimit} searches this month
+            </Text>
+          </View>
+          <View style={styles.aiToggleRow}>
+            <Ionicons name="sparkles" size={16} color="#3949ab" />
+            <Text style={styles.aiToggleText}>AI-curated ranking</Text>
+            <Switch value={aiEnabled} onValueChange={setAiEnabled} />
+          </View>
+        </>
       ) : (
         <TouchableOpacity onPress={() => router.push('/upgrade')} activeOpacity={0.85}>
           <LinearGradient colors={BRAND_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.promoBanner}>
@@ -275,7 +313,7 @@ export default function SearchScreen() {
           {placesFailureDetail ? ` (${placesFailureDetail})` : ''}
         </Text>
       )}
-      {!loading && !refiningRanking && placesSource === 'google' && rankingSource === 'fallback' && account && account.tier !== 'free' && (
+      {!loading && !refiningRanking && placesSource === 'google' && rankingFailureReason !== null && account && account.tier !== 'free' && (
         <Text style={styles.fallbackNotice}>
           {rankingReasonMessage(rankingFailureReason)}
           {rankingFailureDetail ? ` (${rankingFailureDetail})` : ''}
@@ -402,6 +440,21 @@ const styles = StyleSheet.create({
   refiningText: {
     fontSize: 12,
     color: '#3949ab',
+  },
+  aiToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 16,
+    marginTop: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  aiToggleText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#333',
   },
   aiUpsellRow: {
     flexDirection: 'row',
