@@ -6,6 +6,7 @@ export interface Account {
   tier: 'free' | 'paid';
   searchesUsed: number;
   searchLimit: number;
+  period: 'week' | 'month';
 }
 
 /** Fetches the current user's plan + monthly usage. Returns null on any failure. */

@@ -8,7 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { SparkMark } from '../components/icons/SparkMark';
 import { PressableScale } from '../components/PressableScale';
 import { fetchAccount, type Account } from '../lib/account';
-import { FREE_MONTHLY_SEARCHES, PLUS_COMING_SOON, PLUS_FEATURES, PLUS_MONTHLY_SEARCHES } from '../lib/tiers';
+import { FREE_MONTHLY_SEARCHES, PLUS_COMING_SOON, PLUS_FEATURES, PLUS_WEEKLY_SEARCHES } from '../lib/tiers';
 
 const BRAND_GRADIENT: [string, string] = ['#ff0080', '#ff8c00'];
 
@@ -81,7 +81,7 @@ export default function UpgradeScreen() {
             )}
             <Text style={styles.tierNameLight}>Plus</Text>
             <Text style={styles.tierPriceLight}>$4.99/mo</Text>
-            <Text style={styles.tierDetailLight}>{PLUS_MONTHLY_SEARCHES.toLocaleString()} searches / month</Text>
+            <Text style={styles.tierDetailLight}>{PLUS_WEEKLY_SEARCHES} searches / week</Text>
           </LinearGradient>
         </View>
 

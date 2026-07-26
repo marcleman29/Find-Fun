@@ -25,6 +25,7 @@ export interface RankingResult {
 function reasonForStatus(status: number): FetchFailureReason {
   if (status === 401) return 'auth';
   if (status === 429) return 'quota';
+  if (status === 402) return 'budget';
   if (status >= 500) return 'server';
   return 'network';
 }

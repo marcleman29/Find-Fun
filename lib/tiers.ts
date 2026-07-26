@@ -1,10 +1,12 @@
 // Free/Plus limits mirror server/src/auth.js's TIER_LIMITS — keep in sync.
-export const FREE_MONTHLY_SEARCHES = 30;
-export const PLUS_MONTHLY_SEARCHES = 1000;
+// Free resets monthly; Plus resets weekly (a lower per-period ceiling), so
+// one subscriber's heavy month can't compound into an open-ended bill.
+export const FREE_MONTHLY_SEARCHES = 10;
+export const PLUS_WEEKLY_SEARCHES = 100;
 
 export const PLUS_FEATURES = [
-  `${PLUS_MONTHLY_SEARCHES.toLocaleString()} searches a month instead of ${FREE_MONTHLY_SEARCHES}`,
-  "Never get bumped to sample data mid-trip because you hit the cap",
+  'AI-curated rankings from real review signal, not just star average',
+  `${PLUS_WEEKLY_SEARCHES} searches a week instead of ${FREE_MONTHLY_SEARCHES} a month`,
   'Directly funds new cities, categories, and features',
 ];
 

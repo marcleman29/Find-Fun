@@ -79,13 +79,20 @@ By default the app points at `http://localhost:3000`. This works for the iOS Sim
 ## Auth & quotas (Supabase)
 
 1. Create a free project at [supabase.com](https://supabase.com).
-2. In the project's **SQL Editor**, paste and run `server/supabase/schema.sql` once. This creates `profiles` (per-user subscription tier, default `'free'`) and `usage_periods` (monthly search counts), an atomic `increment_usage()` function the server calls to enforce quotas without a race condition, and a trigger that gives every new signup a profile row automatically.
+2. In the project's **SQL Editor**, paste and run `server/supabase/schema.sql` once. This creates `profiles` (per-user subscription tier, default `'free'`) and `usage_periods` (per-period search counts), an atomic `increment_usage()` function the server calls to enforce quotas without a race condition, and a trigger that gives every new signup a profile row automatically.
 3. Then paste and run `server/supabase/likes.sql` once. This creates `place_likes` (one row per user per liked place, powers the Trending sort) with row-level security so a user can only write their own like/unlike rows.
-3. In **Project Settings → API**, copy three values:
+3. Then paste and run `server/supabase/weekly-quota.sql` once. This changes `increment_usage()` to take an explicit period start instead of always assuming a calendar month, since Free resets monthly and Plus resets weekly (see below).
+4. In **Project Settings → API**, copy three values:
    - **Project URL** and **anon/public key** → go in the app (`EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`; safe to embed client-side by Supabase's design, since access is enforced by row-level security, not by keeping this secret).
    - **service_role key** → server only (`SUPABASE_SERVICE_ROLE_KEY`), never sent to the app. This key bypasses row-level security, so it must never end up in client code or a committed file.
-4. By default, Supabase requires email confirmation before a new signup can log in — check your inbox after signing up, or turn "Confirm email" off in **Authentication → Providers → Email** for faster local testing.
-5. Free tier is capped at 30 searches/month (`TIER_LIMITS` in `server/src/auth.js`); a `paid` tier exists in the schema at a higher limit but nothing sets it yet — that's wired up once subscription billing (e.g. RevenueCat + Play Billing) exists to actually charge for it.
+5. By default, Supabase requires email confirmation before a new signup can log in — check your inbox after signing up, or turn "Confirm email" off in **Authentication → Providers → Email** for faster local testing.
+6. Free tier is capped at 10 searches/month and Plus at 100 searches/week (`TIER_LIMITS` in `server/src/auth.js`); a `paid` tier exists in the schema but nothing sets it yet — that's wired up once subscription billing (e.g. RevenueCat + Play Billing) exists to actually charge for it. AI ranking (Qwen) is Plus-only — free accounts see the local ranking heuristic and an upgrade prompt instead of calling `/api/recommendations` at all.
+
+### Cost controls
+
+Two independent things keep the server's monthly bill bounded, since per-user quotas alone only limit one account, not total spend across every signup:
+- **Per-user quotas** above (10/month free, 100/week Plus) via `usage_periods`.
+- **A hard monthly call budget** on SerpApi and Qwen/HF calls (`server/src/costGuard.js`, tunable via `SERPAPI_MONTHLY_CALL_BUDGET`/`HF_MONTHLY_CALL_BUDGET` env vars) — once hit, `/api/places` and `/api/recommendations` return a clear "paused for the rest of the month" response instead of continuing to spend, regardless of how many users are asking. The SerpApi default (900) is sized under SerpApi's $25/mo Starter plan (1,000 calls/month, ~10 calls per uncached search) — check your actual SerpApi plan and adjust the env var before relying on it.
 
 ## Deploying the server (so a built/installed app can reach it)
 

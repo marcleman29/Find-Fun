@@ -59,7 +59,7 @@ export default function SavedScreen() {
           />
           <Text style={[styles.planText, account.tier === 'paid' && styles.planTextPaid]}>
             {account.tier === 'paid' ? 'Plus plan' : 'Free plan'} · {account.searchesUsed}/{account.searchLimit}{' '}
-            searches this month
+            searches this {account.period}
           </Text>
           {account.tier === 'free' && <Text style={styles.planUpgradeLink}>Upgrade</Text>}
         </TouchableOpacity>

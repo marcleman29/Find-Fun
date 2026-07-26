@@ -3,6 +3,8 @@
 // via the "google_maps" engine and returns a data_id per place, then
 // https://serpapi.com/google-maps-reviews-api fetches actual review text for
 // a trimmed set of candidates to keep per-request cost down.
+import { BudgetExceededError, recordUsage, remainingBudget } from './costGuard.js';
+
 const CATEGORY_QUERIES = {
   thingsToDo: 'fun things to do',
   placesToVisit: 'top attractions and places to visit',
@@ -12,6 +14,11 @@ const CATEGORY_QUERIES = {
 const SERPAPI_BASE_URL = 'https://serpapi.com/search.json';
 const MAX_CANDIDATES_TO_ENRICH = 9;
 const MAX_REVIEWS_PER_PLACE = 5;
+// Each uncached search burns up to 1 + MAX_CANDIDATES_TO_ENRICH SerpApi
+// calls. Default sized for SerpApi's $25/mo Starter plan (1,000 calls) with
+// headroom — check server/supabase and your actual SerpApi plan before
+// raising this, since it's the single biggest cost line in the app.
+const SERPAPI_MONTHLY_CALL_BUDGET = Number(process.env.SERPAPI_MONTHLY_CALL_BUDGET ?? 900);
 
 function candidateScore(candidate) {
   const rating = candidate.rating ?? 0;
@@ -33,6 +40,7 @@ async function searchMaps(apiKey, query, coords) {
   url.searchParams.set('api_key', apiKey);
 
   const response = await fetch(url);
+  recordUsage('serpapi', 1);
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`SerpApi google_maps error ${response.status}: ${errorText}`);
@@ -49,6 +57,7 @@ async function fetchReviews(apiKey, dataId) {
   url.searchParams.set('api_key', apiKey);
 
   const response = await fetch(url);
+  recordUsage('serpapi', 1);
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`SerpApi google_maps_reviews error ${response.status}: ${errorText}`);
@@ -59,6 +68,13 @@ async function fetchReviews(apiKey, dataId) {
 }
 
 export async function fetchPlaces(apiKey, location, category, coords) {
+  // Checked once per search rather than per SerpApi call — a search already
+  // in flight is allowed to finish rather than fail partway through; this
+  // only blocks the *next* search once the month's budget is used up.
+  if (remainingBudget('serpapi', SERPAPI_MONTHLY_CALL_BUDGET) <= 0) {
+    throw new BudgetExceededError('Monthly SerpApi call budget exhausted');
+  }
+
   // With coords, `ll` already anchors the search geographically — appending
   // "in {location}" would fight that with a (often approximate) place name.
   const query = coords ? CATEGORY_QUERIES[category] : `${CATEGORY_QUERIES[category]} in ${location}`;

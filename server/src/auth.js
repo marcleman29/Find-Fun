@@ -7,13 +7,33 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 export const supabaseAdmin =
   SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) : null;
 
-// Monthly search allowance per subscription tier. 'paid' is a placeholder
-// until subscription billing (RevenueCat) exists — for now it's set manually
-// per user in the profiles table for testing.
+// Search allowance per subscription tier. 'paid' is a placeholder until
+// subscription billing (RevenueCat) exists — for now it's set manually per
+// user in the profiles table for testing. Free resets monthly; paid resets
+// weekly (see currentPeriodStart) so one subscriber's heavy month can't
+// compound into an open-ended bill the way a flat monthly cap could.
 export const TIER_LIMITS = {
-  free: 30,
-  paid: 1000,
+  free: 10,
+  paid: 100,
 };
+
+export const PERIOD_LABEL = {
+  free: 'month',
+  paid: 'week',
+};
+
+// Free tier keys usage by calendar month; paid keys by ISO week (Monday
+// start, UTC) since it resets weekly. The server decides the period here
+// rather than in SQL so both tiers can share one usage_periods table/RPC.
+export function currentPeriodStart(tier) {
+  const now = new Date();
+  if (tier === 'paid') {
+    const dayIndex = (now.getUTCDay() + 6) % 7; // Monday = 0
+    const monday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - dayIndex));
+    return monday.toISOString().slice(0, 10);
+  }
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-01`;
+}
 
 export function requireAuth() {
   return async (req, res, next) => {
@@ -73,9 +93,11 @@ export function enforceQuota() {
     }
 
     const limit = TIER_LIMITS[profile.tier] ?? TIER_LIMITS.free;
+    const periodStart = currentPeriodStart(profile.tier);
 
     const { data: count, error: usageError } = await supabaseAdmin.rpc('increment_usage', {
       p_user_id: req.userId,
+      p_period_start: periodStart,
     });
 
     if (usageError) {
@@ -85,7 +107,8 @@ export function enforceQuota() {
     }
 
     if (count > limit) {
-      res.status(429).json({ error: `Monthly search limit reached (${limit}) for the ${profile.tier} tier` });
+      const label = PERIOD_LABEL[profile.tier] ?? 'month';
+      res.status(429).json({ error: `This ${label}'s search limit reached (${limit}) for the ${profile.tier} tier` });
       return;
     }
 

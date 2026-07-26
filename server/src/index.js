@@ -3,7 +3,8 @@ import cors from 'cors';
 import { rateLimit } from 'express-rate-limit';
 
 import { CATEGORY_QUERIES, fetchPlaces } from './places.js';
-import { enforceQuota, requireAuth, supabaseAdmin, TIER_LIMITS } from './auth.js';
+import { enforceQuota, requireAuth, supabaseAdmin, TIER_LIMITS, PERIOD_LABEL, currentPeriodStart } from './auth.js';
+import { BudgetExceededError, recordUsage, remainingBudget } from './costGuard.js';
 
 // Qwen is served through Hugging Face's Inference Providers router, which is
 // OpenAI-compatible. HF_MODEL can be "<hf-model-id>" (router picks a provider
@@ -15,6 +16,9 @@ const HF_MODEL = process.env.HF_MODEL ?? 'Qwen/Qwen2.5-72B-Instruct';
 // API — see the comment in places.js for why.
 const SERPAPI_KEY = process.env.SERPAPI_KEY;
 const PORT = process.env.PORT ?? 3000;
+// Qwen is now Plus-only (see /api/recommendations), so volume is already
+// bounded by paying subscribers — this is a backstop, not the main lever.
+const HF_MONTHLY_CALL_BUDGET = Number(process.env.HF_MONTHLY_CALL_BUDGET ?? 2000);
 
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const cache = new Map();
@@ -75,6 +79,10 @@ function extractJson(content) {
 }
 
 async function getQwenRecommendations(location, category, places) {
+  if (remainingBudget('hf', HF_MONTHLY_CALL_BUDGET) <= 0) {
+    throw new BudgetExceededError('Monthly Qwen call budget exhausted');
+  }
+
   const response = await fetch(`${HF_BASE_URL}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -87,6 +95,7 @@ async function getQwenRecommendations(location, category, places) {
       temperature: 0.3,
     }),
   });
+  recordUsage('hf', 1);
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -205,7 +214,7 @@ app.get('/health', (_req, res) => {
     authConfigured: Boolean(supabaseAdmin),
     // Bumped whenever a fix needs to be confirmed live without digging
     // through Render's dashboard — compare this against what's expected.
-    deployMarker: 'profile-self-heal-v1',
+    deployMarker: 'plus-gated-ai-v1',
   });
 });
 
@@ -224,14 +233,13 @@ app.get('/api/account', requireAuth(), async (req, res) => {
     return;
   }
 
-  const periodStart = new Date();
-  const periodStartDate = `${periodStart.getFullYear()}-${String(periodStart.getMonth() + 1).padStart(2, '0')}-01`;
+  const periodStart = currentPeriodStart(profile.tier);
 
   const { data: usage, error: usageError } = await supabaseAdmin
     .from('usage_periods')
     .select('search_count')
     .eq('user_id', req.userId)
-    .eq('period_start', periodStartDate)
+    .eq('period_start', periodStart)
     .maybeSingle();
 
   if (usageError) {
@@ -244,6 +252,7 @@ app.get('/api/account', requireAuth(), async (req, res) => {
     tier: profile.tier,
     searchesUsed: usage?.search_count ?? 0,
     searchLimit: TIER_LIMITS[profile.tier] ?? TIER_LIMITS.free,
+    period: PERIOD_LABEL[profile.tier] ?? 'month',
   });
 });
 
@@ -286,6 +295,10 @@ app.get('/api/places', paidApiLimiter, requireAuth(), enforceQuota(), async (req
     placesCache.set(key, { places, expires: Date.now() + PLACES_CACHE_TTL_MS });
     res.json({ source: 'google', places });
   } catch (error) {
+    if (error instanceof BudgetExceededError) {
+      res.status(402).json({ error: 'Live search is paused for the rest of the month to stay within budget.' });
+      return;
+    }
     console.error('Places request failed:', error);
     res.status(502).json({ error: 'Failed to fetch places' });
   }
@@ -293,14 +306,36 @@ app.get('/api/places', paidApiLimiter, requireAuth(), enforceQuota(), async (req
 
 // requireAuth() only, not enforceQuota() — a search always calls /api/places
 // first, which already counts it. Counting again here would silently halve
-// everyone's real monthly allowance (a free "30 searches" would only ever
-// be 15 full searches), which only became obvious once a user-facing usage
+// everyone's real allowance (a free "10 searches/month" would only ever be
+// 5 full searches), which only became obvious once a user-facing usage
 // count needed to actually match what a "search" means to the user.
+//
+// AI ranking is Plus-only: free accounts get a 403 here so the client can
+// show a clear upgrade prompt instead of a generic failure. This is also
+// the real cost control for Qwen, not just a UI distinction — it caps AI
+// call volume to paying subscribers instead of every signup.
 app.post('/api/recommendations', paidApiLimiter, requireAuth(), async (req, res) => {
   const { location, category, places } = req.body ?? {};
 
   if (typeof location !== 'string' || typeof category !== 'string' || !Array.isArray(places) || places.length === 0) {
     res.status(400).json({ error: 'location, category, and a non-empty places array are required' });
+    return;
+  }
+
+  const { data: profile, error: profileError } = await supabaseAdmin
+    .from('profiles')
+    .select('tier')
+    .eq('id', req.userId)
+    .single();
+
+  if (profileError || !profile) {
+    console.error('Could not load account for /api/recommendations:', profileError);
+    res.status(500).json({ error: `Could not load account: ${profileError?.message ?? 'unknown error'}` });
+    return;
+  }
+
+  if (profile.tier !== 'paid') {
+    res.status(403).json({ error: 'AI ranking is a Plus feature — upgrade to unlock it.' });
     return;
   }
 
@@ -321,6 +356,10 @@ app.post('/api/recommendations', paidApiLimiter, requireAuth(), async (req, res)
     cache.set(key, { recommendations, expires: Date.now() + CACHE_TTL_MS });
     res.json({ source: 'qwen', recommendations });
   } catch (error) {
+    if (error instanceof BudgetExceededError) {
+      res.status(402).json({ error: 'AI ranking is paused for the rest of the month to stay within budget.' });
+      return;
+    }
     console.error('Qwen recommendation request failed:', error);
     res.status(502).json({ error: 'Failed to get recommendations from Qwen' });
   }

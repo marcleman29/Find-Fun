@@ -16,6 +16,7 @@ import { fetchLikeCounts, type LikeInfo } from '../../lib/likes';
 import { getCurrentLocation } from '../../lib/location';
 import { fetchPlaces, type FetchFailureReason } from '../../lib/places';
 import { rankPlaces } from '../../lib/ranking';
+import { PLUS_WEEKLY_SEARCHES } from '../../lib/tiers';
 import type { PlaceCategory, RankedPlace } from '../../lib/types';
 
 type SortMode = 'top' | 'trending';
@@ -35,6 +36,7 @@ const REASON_MESSAGES: Record<FetchFailureReason, string> = {
   quota: "You've hit this month's search limit.",
   server: 'The server hit an error — showing sample data instead.',
   network: "Couldn't reach the server — showing sample data instead.",
+  budget: 'Live search is paused for the rest of the month — showing sample data instead.',
 };
 
 function rankingReasonMessage(reason: FetchFailureReason | null): string {
@@ -43,6 +45,8 @@ function rankingReasonMessage(reason: FetchFailureReason | null): string {
       return "AI ranking hit this month's search limit — showing these real results with basic ranking.";
     case 'auth':
       return 'Your session expired, so AI ranking was skipped — showing these real results with basic ranking.';
+    case 'budget':
+      return 'AI ranking is paused for the rest of the month — showing these real results with basic ranking.';
     default:
       return 'AI ranking unavailable right now — showing these real results with basic ranking.';
   }
@@ -68,6 +72,11 @@ export default function SearchScreen() {
   const [account, setAccount] = useState<Account | null>(null);
   const { isFavorite, toggleFavorite } = useFavorites();
   const lastReasonRef = useRef<FetchFailureReason | null>(null);
+  // Read inside the places-fetch effect below without making it a dependency
+  // — putting `account` in that effect's deps would refetch places (and
+  // re-spend SerpApi budget) the moment the account request resolves after
+  // mount, on every single app open.
+  const accountRef = useRef<Account | null>(null);
 
   // Refetch on focus (not just mount) so flipping tier in Supabase and
   // coming back to this tab reflects it without needing to reopen the app.
@@ -82,6 +91,10 @@ export default function SearchScreen() {
       };
     }, [])
   );
+
+  useEffect(() => {
+    accountRef.current = account;
+  }, [account]);
 
   // Places come from the server's Google Places-backed endpoint when it's
   // configured; if that's unavailable (no server, no API key, network error)
@@ -114,6 +127,11 @@ export default function SearchScreen() {
       setRankingFailureReason(null);
       setRankingFailureDetail(null);
       setLoading(false);
+
+      // AI ranking is a Plus feature — skip the round trip entirely for
+      // free accounts instead of calling the server just to get a 403 back.
+      if (accountRef.current?.tier !== 'paid') return;
+
       setRefiningRanking(true);
 
       const rankingResult = await getRankedPlaces(searchedLocation, category, candidates);
@@ -231,7 +249,7 @@ export default function SearchScreen() {
         <View style={styles.planBanner}>
           <Ionicons name="checkmark-circle" size={16} color="#0d9488" />
           <Text style={styles.planBannerText}>
-            Plus active — {account.searchesUsed}/{account.searchLimit} searches this month
+            Plus active — {account.searchesUsed}/{account.searchLimit} searches this {account.period}
           </Text>
         </View>
       ) : (
@@ -239,8 +257,8 @@ export default function SearchScreen() {
           <LinearGradient colors={BRAND_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.promoBanner}>
             <Ionicons name="sparkles" size={16} color="#fff" />
             <Text style={styles.promoText}>
-              {account ? `${account.searchesUsed}/${account.searchLimit} searches used — ` : ''}Go Plus for 1,000
-              searches a month
+              {account ? `${account.searchesUsed}/${account.searchLimit} searches used — ` : ''}Go Plus for AI-curated
+              rankings + {PLUS_WEEKLY_SEARCHES} searches a week
             </Text>
             <Ionicons name="chevron-forward" size={16} color="#fff" />
           </LinearGradient>
@@ -259,11 +277,20 @@ export default function SearchScreen() {
           {placesFailureDetail ? ` (${placesFailureDetail})` : ''}
         </Text>
       )}
-      {!loading && !refiningRanking && placesSource === 'google' && rankingSource === 'fallback' && (
+      {!loading && !refiningRanking && placesSource === 'google' && rankingSource === 'fallback' && account?.tier === 'paid' && (
         <Text style={styles.fallbackNotice}>
           {rankingReasonMessage(rankingFailureReason)}
           {rankingFailureDetail ? ` (${rankingFailureDetail})` : ''}
         </Text>
+      )}
+      {!loading && !refiningRanking && placesSource === 'google' && account && account.tier !== 'paid' && (
+        <TouchableOpacity onPress={() => router.push('/upgrade')} activeOpacity={0.85}>
+          <View style={styles.aiUpsellRow}>
+            <Ionicons name="sparkles" size={14} color="#3949ab" />
+            <Text style={styles.aiUpsellText}>Upgrade to Plus for AI-curated rankings</Text>
+            <Ionicons name="chevron-forward" size={14} color="#3949ab" />
+          </View>
+        </TouchableOpacity>
       )}
       {loading ? (
         <View style={styles.loading}>
@@ -376,6 +403,23 @@ const styles = StyleSheet.create({
   },
   refiningText: {
     fontSize: 12,
+    color: '#3949ab',
+  },
+  aiUpsellRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginHorizontal: 16,
+    marginTop: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: '#eef2ff',
+  },
+  aiUpsellText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '600',
     color: '#3949ab',
   },
   loading: {
