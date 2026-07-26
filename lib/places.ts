@@ -8,7 +8,7 @@ const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:3
 // back to mock data even though the server is healthy, just slow to wake.
 const REQUEST_TIMEOUT_MS = 45000;
 
-export type FetchFailureReason = 'auth' | 'quota' | 'server' | 'network';
+export type FetchFailureReason = 'auth' | 'quota' | 'server' | 'network' | 'budget';
 
 export interface FetchPlacesResult {
   places: Place[] | null;
@@ -19,6 +19,7 @@ export interface FetchPlacesResult {
 function reasonForStatus(status: number): FetchFailureReason {
   if (status === 401) return 'auth';
   if (status === 429) return 'quota';
+  if (status === 402) return 'budget';
   if (status >= 500) return 'server';
   return 'network';
 }

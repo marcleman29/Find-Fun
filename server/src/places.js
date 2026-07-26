@@ -3,6 +3,8 @@
 // via the "google_maps" engine and returns a data_id per place, then
 // https://serpapi.com/google-maps-reviews-api fetches actual review text for
 // a trimmed set of candidates to keep per-request cost down.
+import { BudgetExceededError, recordUsage, remainingBudget } from './costGuard.js';
+
 const CATEGORY_QUERIES = {
   thingsToDo: 'fun things to do',
   placesToVisit: 'top attractions and places to visit',
@@ -10,8 +12,22 @@ const CATEGORY_QUERIES = {
 };
 
 const SERPAPI_BASE_URL = 'https://serpapi.com/search.json';
-const MAX_CANDIDATES_TO_ENRICH = 9;
+// Each uncached search burns up to 1 + MAX_CANDIDATES_TO_ENRICH SerpApi
+// calls — 7 at this setting, $0.175/search on SerpApi's $25/mo Starter plan
+// ($0.025/call). This is the number the paid tier quotas in auth.js's
+// TIER_LIMITS are sized against to guarantee their profit margin; raising
+// this without re-checking that math would erode the guarantee.
+const MAX_CANDIDATES_TO_ENRICH = 6;
 const MAX_REVIEWS_PER_PLACE = 5;
+// This budget only ever throttles free tier — free is the only traffic
+// with no natural cost check (anyone can sign up for free, unlimited
+// times), so it's the only one that needs a shared ceiling. Paying
+// customers are bounded by their own monthly quota (TIER_LIMITS in
+// auth.js) instead: a known, expected limit, never a shared pool that
+// someone else's usage — free or paid — can exhaust out from under them.
+// Sized as a modest slice of SerpApi's $25/mo Starter plan (1,000 calls);
+// check your actual plan before raising it.
+const SERPAPI_FREE_MONTHLY_CALL_BUDGET = Number(process.env.SERPAPI_FREE_MONTHLY_CALL_BUDGET ?? 400);
 
 function candidateScore(candidate) {
   const rating = candidate.rating ?? 0;
@@ -19,7 +35,7 @@ function candidateScore(candidate) {
   return rating * Math.log10(count + 1);
 }
 
-async function searchMaps(apiKey, query, coords) {
+async function searchMaps(apiKey, query, coords, budgetName) {
   const url = new URL(SERPAPI_BASE_URL);
   url.searchParams.set('engine', 'google_maps');
   url.searchParams.set('q', query);
@@ -33,6 +49,7 @@ async function searchMaps(apiKey, query, coords) {
   url.searchParams.set('api_key', apiKey);
 
   const response = await fetch(url);
+  recordUsage(budgetName, 1);
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`SerpApi google_maps error ${response.status}: ${errorText}`);
@@ -42,13 +59,14 @@ async function searchMaps(apiKey, query, coords) {
   return data.local_results ?? [];
 }
 
-async function fetchReviews(apiKey, dataId) {
+async function fetchReviews(apiKey, dataId, budgetName) {
   const url = new URL(SERPAPI_BASE_URL);
   url.searchParams.set('engine', 'google_maps_reviews');
   url.searchParams.set('data_id', dataId);
   url.searchParams.set('api_key', apiKey);
 
   const response = await fetch(url);
+  recordUsage(budgetName, 1);
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`SerpApi google_maps_reviews error ${response.status}: ${errorText}`);
@@ -58,11 +76,23 @@ async function fetchReviews(apiKey, dataId) {
   return data.reviews ?? [];
 }
 
-export async function fetchPlaces(apiKey, location, category, coords) {
+export async function fetchPlaces(apiKey, location, category, coords, tier) {
+  const isFree = tier === 'free' || !tier;
+  const budgetName = isFree ? 'serpapi_free' : 'serpapi_paid';
+
+  // Checked once per search rather than per SerpApi call — a search already
+  // in flight is allowed to finish rather than fail partway through; this
+  // only blocks the *next* search once free tier's monthly budget is used
+  // up. Paid tiers are recorded (budgetName above) for visibility but never
+  // gated here — see the comment on SERPAPI_FREE_MONTHLY_CALL_BUDGET for why.
+  if (isFree && remainingBudget(budgetName, SERPAPI_FREE_MONTHLY_CALL_BUDGET) <= 0) {
+    throw new BudgetExceededError('Monthly SerpApi call budget exhausted for free tier');
+  }
+
   // With coords, `ll` already anchors the search geographically — appending
   // "in {location}" would fight that with a (often approximate) place name.
   const query = coords ? CATEGORY_QUERIES[category] : `${CATEGORY_QUERIES[category]} in ${location}`;
-  const candidates = await searchMaps(apiKey, query, coords);
+  const candidates = await searchMaps(apiKey, query, coords, budgetName);
 
   const topCandidates = candidates
     .filter((candidate) => candidate.data_id && candidate.title)
@@ -71,7 +101,7 @@ export async function fetchPlaces(apiKey, location, category, coords) {
 
   const places = await Promise.all(
     topCandidates.map(async (candidate) => {
-      const reviews = await fetchReviews(apiKey, candidate.data_id).catch(() => []);
+      const reviews = await fetchReviews(apiKey, candidate.data_id, budgetName).catch(() => []);
       return {
         id: candidate.data_id,
         name: candidate.title,

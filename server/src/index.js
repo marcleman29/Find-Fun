@@ -3,7 +3,8 @@ import cors from 'cors';
 import { rateLimit } from 'express-rate-limit';
 
 import { CATEGORY_QUERIES, fetchPlaces } from './places.js';
-import { enforceQuota, requireAuth, supabaseAdmin, TIER_LIMITS } from './auth.js';
+import { enforceQuota, requireAuth, supabaseAdmin, TIER_LIMITS, currentPeriodStart } from './auth.js';
+import { BudgetExceededError, recordUsage } from './costGuard.js';
 
 // Qwen is served through Hugging Face's Inference Providers router, which is
 // OpenAI-compatible. HF_MODEL can be "<hf-model-id>" (router picks a provider
@@ -87,6 +88,7 @@ async function getQwenRecommendations(location, category, places) {
       temperature: 0.3,
     }),
   });
+  recordUsage('hf', 1);
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -205,7 +207,7 @@ app.get('/health', (_req, res) => {
     authConfigured: Boolean(supabaseAdmin),
     // Bumped whenever a fix needs to be confirmed live without digging
     // through Render's dashboard — compare this against what's expected.
-    deployMarker: 'profile-self-heal-v1',
+    deployMarker: 'plus-gated-ai-v1',
   });
 });
 
@@ -224,14 +226,13 @@ app.get('/api/account', requireAuth(), async (req, res) => {
     return;
   }
 
-  const periodStart = new Date();
-  const periodStartDate = `${periodStart.getFullYear()}-${String(periodStart.getMonth() + 1).padStart(2, '0')}-01`;
+  const periodStart = currentPeriodStart();
 
   const { data: usage, error: usageError } = await supabaseAdmin
     .from('usage_periods')
     .select('search_count')
     .eq('user_id', req.userId)
-    .eq('period_start', periodStartDate)
+    .eq('period_start', periodStart)
     .maybeSingle();
 
   if (usageError) {
@@ -282,10 +283,14 @@ app.get('/api/places', paidApiLimiter, requireAuth(), enforceQuota(), async (req
   }
 
   try {
-    const places = await fetchPlaces(SERPAPI_KEY, location, category, coords);
+    const places = await fetchPlaces(SERPAPI_KEY, location, category, coords, req.tier);
     placesCache.set(key, { places, expires: Date.now() + PLACES_CACHE_TTL_MS });
     res.json({ source: 'google', places });
   } catch (error) {
+    if (error instanceof BudgetExceededError) {
+      res.status(402).json({ error: 'SerpApi budget reached for free tier this month' });
+      return;
+    }
     console.error('Places request failed:', error);
     res.status(502).json({ error: 'Failed to fetch places' });
   }
@@ -293,14 +298,39 @@ app.get('/api/places', paidApiLimiter, requireAuth(), enforceQuota(), async (req
 
 // requireAuth() only, not enforceQuota() — a search always calls /api/places
 // first, which already counts it. Counting again here would silently halve
-// everyone's real monthly allowance (a free "30 searches" would only ever
-// be 15 full searches), which only became obvious once a user-facing usage
+// everyone's real allowance (a free "10 searches/month" would only ever be
+// 5 full searches), which only became obvious once a user-facing usage
 // count needed to actually match what a "search" means to the user.
+//
+// AI ranking is Plus-only: free accounts get a 403 here so the client can
+// show a clear upgrade prompt instead of a generic failure. This is also
+// the real cost control for Qwen, not just a UI distinction — it caps AI
+// call volume to paying subscribers instead of every signup, so there's no
+// separate monthly budget gate on top of that (a paying customer's request
+// should never get turned away by a shared pool other accounts drew down —
+// only by their own advertised weekly quota, enforced above via 403/429).
 app.post('/api/recommendations', paidApiLimiter, requireAuth(), async (req, res) => {
   const { location, category, places } = req.body ?? {};
 
   if (typeof location !== 'string' || typeof category !== 'string' || !Array.isArray(places) || places.length === 0) {
     res.status(400).json({ error: 'location, category, and a non-empty places array are required' });
+    return;
+  }
+
+  const { data: profile, error: profileError } = await supabaseAdmin
+    .from('profiles')
+    .select('tier')
+    .eq('id', req.userId)
+    .single();
+
+  if (profileError || !profile) {
+    console.error('Could not load account for /api/recommendations:', profileError);
+    res.status(500).json({ error: `Could not load account: ${profileError?.message ?? 'unknown error'}` });
+    return;
+  }
+
+  if (profile.tier === 'free') {
+    res.status(403).json({ error: 'AI ranking is a paid feature — upgrade to unlock it.' });
     return;
   }
 

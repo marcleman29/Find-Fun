@@ -1,9 +1,10 @@
 import { supabase } from './supabase';
+import type { PaidTierId } from './tiers';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:3000';
 
 export interface Account {
-  tier: 'free' | 'paid';
+  tier: 'free' | PaidTierId;
   searchesUsed: number;
   searchLimit: number;
 }

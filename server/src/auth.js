@@ -7,13 +7,25 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 export const supabaseAdmin =
   SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) : null;
 
-// Monthly search allowance per subscription tier. 'paid' is a placeholder
-// until subscription billing (RevenueCat) exists — for now it's set manually
-// per user in the profiles table for testing.
+// Monthly search allowance per subscription tier. Paid tiers are a
+// placeholder until subscription billing (RevenueCat) exists — for now
+// tier is set manually in the profiles table for testing. Each paid tier's
+// quota is sized so that even a subscriber using their *entire* monthly
+// allowance (worst case, no cache hit — see MAX_CANDIDATES_TO_ENRICH in
+// places.js) keeps SerpApi cost under ~55% of what they paid, guaranteeing
+// at least a 30-40% profit margin after Google Play's ~15% cut. Raising a
+// tier's quota without re-checking that math would erode the guarantee.
 export const TIER_LIMITS = {
-  free: 30,
-  paid: 1000,
+  free: 10,
+  plus: 12,
+  pro: 25,
+  max: 50,
 };
+
+export function currentPeriodStart() {
+  const now = new Date();
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-01`;
+}
 
 export function requireAuth() {
   return async (req, res, next) => {
@@ -73,9 +85,11 @@ export function enforceQuota() {
     }
 
     const limit = TIER_LIMITS[profile.tier] ?? TIER_LIMITS.free;
+    const periodStart = currentPeriodStart();
 
     const { data: count, error: usageError } = await supabaseAdmin.rpc('increment_usage', {
       p_user_id: req.userId,
+      p_period_start: periodStart,
     });
 
     if (usageError) {
@@ -85,10 +99,11 @@ export function enforceQuota() {
     }
 
     if (count > limit) {
-      res.status(429).json({ error: `Monthly search limit reached (${limit}) for the ${profile.tier} tier` });
+      res.status(429).json({ error: `This month's search limit reached (${limit}) for the ${profile.tier} tier` });
       return;
     }
 
+    req.tier = profile.tier;
     next();
   };
 }
